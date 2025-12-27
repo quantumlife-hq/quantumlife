@@ -1,0 +1,38 @@
+# Binaries
+/ql
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test data
+testdata/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+go.work
+
+# Environment
+.env
+.env.local
+*.pem
+*.key
+
+# Build
+dist/
+build/
