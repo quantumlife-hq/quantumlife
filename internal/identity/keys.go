@@ -343,3 +343,65 @@ func (kb *KeyBundle) Decapsulate(ciphertext []byte) (sharedSecret []byte, err er
 	kb.MLKEMPrivate.DecapsulateTo(ss, ciphertext)
 	return ss, nil
 }
+
+// -----------------------------------------------------------------------------
+// Symmetric encryption for credential storage
+// -----------------------------------------------------------------------------
+
+// encryptWithKey encrypts data using a key derived from the identity keys
+func encryptWithKey(kb *KeyBundle, data []byte) ([]byte, error) {
+	// Derive a symmetric key from the Ed25519 private key seed
+	// Use first 32 bytes of the private key (the seed)
+	key := deriveSymmetricKey(kb.Ed25519Private[:32])
+
+	// Create AEAD cipher (XChaCha20-Poly1305)
+	aead, err := chacha20poly1305.NewX(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	// Generate nonce
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	// Encrypt and prepend nonce
+	ciphertext := aead.Seal(nonce, nonce, data, nil)
+	return ciphertext, nil
+}
+
+// decryptWithKey decrypts data using a key derived from the identity keys
+func decryptWithKey(kb *KeyBundle, data []byte) ([]byte, error) {
+	// Derive symmetric key
+	key := deriveSymmetricKey(kb.Ed25519Private[:32])
+
+	// Create AEAD cipher
+	aead, err := chacha20poly1305.NewX(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+
+	// Extract nonce and ciphertext
+	if len(data) < aead.NonceSize() {
+		return nil, errors.New("ciphertext too short")
+	}
+	nonce := data[:aead.NonceSize()]
+	ciphertext := data[aead.NonceSize():]
+
+	// Decrypt
+	plaintext, err := aead.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("decryption failed: %w", err)
+	}
+
+	return plaintext, nil
+}
+
+// deriveSymmetricKey derives a symmetric key from a seed using Argon2id
+func deriveSymmetricKey(seed []byte) []byte {
+	// Use a fixed salt for deterministic key derivation
+	// This is safe because the seed itself is secret
+	salt := []byte("quantumlife-credential-key-v1")
+	return argon2.IDKey(seed, salt, 1, 16*1024, 1, 32)
+}

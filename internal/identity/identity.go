@@ -21,6 +21,7 @@ type Identity struct {
 // Manager handles identity operations
 type Manager struct {
 	store IdentityStore
+	keys  *KeyBundle // Unlocked keys (nil until Unlock called)
 }
 
 // IdentityStore is the interface for identity persistence
@@ -134,4 +135,30 @@ func (id *Identity) ToPublic() *PublicIdentity {
 // ToJSON exports public identity as JSON
 func (pi *PublicIdentity) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(pi, "", "  ")
+}
+
+// Unlock loads and decrypts keys for an already-loaded identity
+func (m *Manager) Unlock(you *core.You, serialized *SerializedKeyBundle, passphrase string) error {
+	keys, err := serialized.Deserialize(passphrase)
+	if err != nil {
+		return core.ErrDecryptionFailed
+	}
+	m.keys = keys
+	return nil
+}
+
+// Encrypt encrypts data using the identity's encryption key
+func (m *Manager) Encrypt(data []byte) ([]byte, error) {
+	if m.keys == nil {
+		return nil, fmt.Errorf("identity not unlocked")
+	}
+	return encryptWithKey(m.keys, data)
+}
+
+// Decrypt decrypts data using the identity's decryption key
+func (m *Manager) Decrypt(data []byte) ([]byte, error) {
+	if m.keys == nil {
+		return nil, fmt.Errorf("identity not unlocked")
+	}
+	return decryptWithKey(m.keys, data)
 }

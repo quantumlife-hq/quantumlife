@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuantumLife</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .chat-message { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .hat-card:hover { transform: translateY(-2px); transition: all 0.2s; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app" class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 gradient-bg text-white flex flex-col">
+            <div class="p-6">
+                <h1 class="text-2xl font-bold">QuantumLife</h1>
+                <p class="text-sm opacity-75 mt-1">Your Life OS</p>
+            </div>
+
+            <nav class="flex-1 px-4">
+                <button onclick="showView('dashboard')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
+                    <span class="mr-3">📊</span> Dashboard
+                </button>
+                <button onclick="showView('hats')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
+                    <span class="mr-3">🎭</span> Hats
+                </button>
+                <button onclick="showView('items')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
+                    <span class="mr-3">📬</span> Items
+                </button>
+                <button onclick="showView('chat')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
+                    <span class="mr-3">🤖</span> Agent Chat
+                </button>
+                <button onclick="showView('spaces')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
+                    <span class="mr-3">📡</span> Spaces
+                </button>
+            </nav>
+
+            <div class="p-4 border-t border-white/20">
+                <div id="identity-info" class="text-sm opacity-75">Loading...</div>
+                <div id="agent-status" class="text-xs mt-2 flex items-center">
+                    <span class="w-2 h-2 rounded-full bg-gray-400 mr-2"></span>
+                    <span>Agent: Checking...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto">
+            <!-- Dashboard View -->
+            <div id="view-dashboard" class="p-8">
+                <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+
+                <div class="grid grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <div class="text-3xl font-bold text-indigo-600" id="stat-items">0</div>
+                        <div class="text-gray-500">Total Items</div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <div class="text-3xl font-bold text-purple-600" id="stat-memories">0</div>
+                        <div class="text-gray-500">Memories</div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <div class="text-3xl font-bold text-pink-600" id="stat-spaces">0</div>
+                        <div class="text-gray-500">Spaces</div>
+                    </div>
+                    <div class="bg-white rounded-xl p-6 shadow-sm">
+                        <div class="text-3xl font-bold text-green-600" id="stat-agent">-</div>
+                        <div class="text-gray-500">Agent Status</div>
+                    </div>
+                </div>
+
+                <h3 class="text-xl font-semibold mb-4">Your Hats</h3>
+                <div id="dashboard-hats" class="grid grid-cols-4 gap-4">
+                    <!-- Hats will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Hats View -->
+            <div id="view-hats" class="p-8 hidden">
+                <h2 class="text-2xl font-bold mb-6">Your Hats</h2>
+                <div id="hats-grid" class="grid grid-cols-3 gap-6">
+                    <!-- Hats will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Items View -->
+            <div id="view-items" class="p-8 hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">Items</h2>
+                    <select id="items-filter" onchange="loadItems()" class="px-4 py-2 border rounded-lg">
+                        <option value="">All Hats</option>
+                    </select>
+                </div>
+                <div id="items-list" class="space-y-4">
+                    <!-- Items will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Chat View -->
+            <div id="view-chat" class="p-8 hidden flex flex-col h-full">
+                <h2 class="text-2xl font-bold mb-6">Chat with Your Agent</h2>
+
+                <div id="chat-messages" class="flex-1 overflow-auto bg-white rounded-xl p-6 mb-4 space-y-4">
+                    <div class="chat-message text-center text-gray-400">
+                        Start a conversation with your AI agent
+                    </div>
+                </div>
+
+                <form onsubmit="sendMessage(event)" class="flex gap-4">
+                    <input type="text" id="chat-input" placeholder="Type a message..."
+                           class="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <button type="submit" class="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">
+                        Send
+                    </button>
+                </form>
+            </div>
+
+            <!-- Spaces View -->
+            <div id="view-spaces" class="p-8 hidden">
+                <h2 class="text-2xl font-bold mb-6">Connected Spaces</h2>
+                <div id="spaces-list" class="space-y-4">
+                    <!-- Spaces will be loaded here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+        let currentView = 'dashboard';
+        let ws = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadIdentity();
+            loadStats();
+            loadHats();
+            connectWebSocket();
+        });
+
+        // WebSocket
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                handleWebSocketMessage(msg);
+            };
+
+            ws.onclose = () => {
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function handleWebSocketMessage(msg) {
+            if (msg.type === 'item.created' || msg.type === 'item.updated') {
+                loadStats();
+                if (currentView === 'items') loadItems();
+            }
+        }
+
+        // API calls
+        async function api(endpoint, options = {}) {
+            const response = await fetch(API_BASE + endpoint, {
+                headers: { 'Content-Type': 'application/json' },
+                ...options
+            });
+            return response.json();
+        }
+
+        async function loadIdentity() {
+            const data = await api('/identity');
+            document.getElementById('identity-info').textContent = `👤 ${data.name}`;
+        }
+
+        async function loadStats() {
+            const data = await api('/stats');
+            document.getElementById('stat-items').textContent = data.total_items;
+            document.getElementById('stat-memories').textContent = data.total_memories;
+            document.getElementById('stat-spaces').textContent = data.total_spaces;
+            document.getElementById('stat-agent').innerHTML = data.agent_running
+                ? '<span class="text-green-500">Running</span>'
+                : '<span class="text-gray-400">Stopped</span>';
+
+            const agentStatus = document.getElementById('agent-status');
+            agentStatus.innerHTML = data.agent_running
+                ? '<span class="w-2 h-2 rounded-full bg-green-400 mr-2"></span><span>Agent: Running</span>'
+                : '<span class="w-2 h-2 rounded-full bg-gray-400 mr-2"></span><span>Agent: Stopped</span>';
+        }
+
+        async function loadHats() {
+            const hats = await api('/hats');
+
+            // Dashboard hats
+            const dashboardHats = document.getElementById('dashboard-hats');
+            dashboardHats.innerHTML = hats.map(hat => `
+                <div class="hat-card bg-white rounded-xl p-4 shadow-sm cursor-pointer"
+                     style="border-left: 4px solid ${hat.color}"
+                     onclick="showHatItems('${hat.id}')">
+                    <div class="text-2xl mb-2">${hat.icon}</div>
+                    <div class="font-medium">${hat.name}</div>
+                    <div class="text-sm text-gray-500">${hat.description || ''}</div>
+                </div>
+            `).join('');
+
+            // Hats grid
+            const hatsGrid = document.getElementById('hats-grid');
+            hatsGrid.innerHTML = hats.map(hat => `
+                <div class="bg-white rounded-xl p-6 shadow-sm" style="border-top: 4px solid ${hat.color}">
+                    <div class="flex items-center mb-4">
+                        <span class="text-3xl mr-3">${hat.icon}</span>
+                        <div>
+                            <div class="font-semibold text-lg">${hat.name}</div>
+                            <div class="text-sm text-gray-500">${hat.id}</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-600 mb-4">${hat.description || 'No description'}</p>
+                    <div class="flex items-center text-sm">
+                        <span class="px-2 py-1 rounded ${hat.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
+                            ${hat.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                        ${hat.is_system ? '<span class="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded">System</span>' : ''}
+                    </div>
+                </div>
+            `).join('');
+
+            // Items filter
+            const filter = document.getElementById('items-filter');
+            filter.innerHTML = '<option value="">All Hats</option>' +
+                hats.map(hat => `<option value="${hat.id}">${hat.icon} ${hat.name}</option>`).join('');
+        }
+
+        async function loadItems() {
+            const hatFilter = document.getElementById('items-filter').value;
+            const endpoint = hatFilter ? `/items?hat=${hatFilter}` : '/items';
+            const items = await api(endpoint);
+
+            const itemsList = document.getElementById('items-list');
+            if (!items || items.length === 0) {
+                itemsList.innerHTML = '<div class="text-center text-gray-400 py-8">No items yet</div>';
+                return;
+            }
+
+            itemsList.innerHTML = items.map(item => `
+                <div class="bg-white rounded-xl p-6 shadow-sm">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <div class="flex items-center mb-2">
+                                <span class="px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700 mr-2">${item.hat_id}</span>
+                                <span class="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">${item.type}</span>
+                                <span class="ml-2 text-sm text-gray-400">${new Date(item.created_at).toLocaleString()}</span>
+                            </div>
+                            <h3 class="font-semibold text-lg">${item.subject || 'No subject'}</h3>
+                            <p class="text-gray-500 text-sm">${item.from || 'Unknown sender'}</p>
+                            ${item.summary ? `<p class="mt-2 text-gray-600">${item.summary}</p>` : ''}
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm font-medium ${getPriorityColor(item.priority)}">
+                                P${item.priority}
+                            </div>
+                            ${item.sentiment ? `<div class="text-xs text-gray-400 mt-1">${item.sentiment}</div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadSpaces() {
+            const spaces = await api('/spaces');
+            const spacesList = document.getElementById('spaces-list');
+
+            if (!spaces || spaces.length === 0) {
+                spacesList.innerHTML = `
+                    <div class="text-center py-8">
+                        <p class="text-gray-400 mb-4">No spaces connected</p>
+                        <p class="text-sm text-gray-500">Use the CLI to add spaces: <code class="bg-gray-100 px-2 py-1 rounded">ql spaces add gmail</code></p>
+                    </div>
+                `;
+                return;
+            }
+
+            spacesList.innerHTML = spaces.map(space => `
+                <div class="bg-white rounded-xl p-6 shadow-sm flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="text-3xl mr-4">${getSpaceIcon(space.provider)}</div>
+                        <div>
+                            <div class="font-semibold">${space.name}</div>
+                            <div class="text-sm text-gray-500">${space.provider} - ${space.type}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="px-3 py-1 rounded ${space.is_connected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                            ${space.is_connected ? 'Connected' : 'Disconnected'}
+                        </span>
+                        ${space.last_sync_at ? `<span class="ml-4 text-sm text-gray-400">Last sync: ${new Date(space.last_sync_at).toLocaleString()}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function sendMessage(event) {
+            event.preventDefault();
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (!message) return;
+
+            const messagesDiv = document.getElementById('chat-messages');
+
+            // Add user message
+            messagesDiv.innerHTML += `
+                <div class="chat-message flex justify-end">
+                    <div class="bg-indigo-600 text-white px-4 py-2 rounded-xl max-w-md">
+                        ${escapeHtml(message)}
+                    </div>
+                </div>
+            `;
+
+            input.value = '';
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            // Get response
+            try {
+                const data = await api('/agent/chat', {
+                    method: 'POST',
+                    body: JSON.stringify({ message })
+                });
+
+                messagesDiv.innerHTML += `
+                    <div class="chat-message flex justify-start">
+                        <div class="bg-gray-100 px-4 py-2 rounded-xl max-w-md">
+                            <div class="text-xs text-indigo-600 mb-1">🤖 Agent</div>
+                            ${escapeHtml(data.response)}
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                messagesDiv.innerHTML += `
+                    <div class="chat-message flex justify-start">
+                        <div class="bg-red-100 text-red-700 px-4 py-2 rounded-xl max-w-md">
+                            Error: Could not get response
+                        </div>
+                    </div>
+                `;
+            }
+
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function showView(view) {
+            document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`view-${view}`).classList.remove('hidden');
+            currentView = view;
+
+            if (view === 'items') loadItems();
+            if (view === 'spaces') loadSpaces();
+        }
+
+        function showHatItems(hatId) {
+            document.getElementById('items-filter').value = hatId;
+            showView('items');
+            loadItems();
+        }
+
+        function getPriorityColor(priority) {
+            const colors = {
+                1: 'text-red-600',
+                2: 'text-orange-600',
+                3: 'text-yellow-600',
+                4: 'text-blue-600',
+                5: 'text-gray-600'
+            };
+            return colors[priority] || 'text-gray-600';
+        }
+
+        function getSpaceIcon(provider) {
+            const icons = {
+                gmail: '📧',
+                outlook: '📬',
+                calendar: '📅',
+                gdrive: '📁',
+                dropbox: '📦'
+            };
+            return icons[provider] || '📡';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
