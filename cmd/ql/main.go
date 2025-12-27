@@ -25,6 +25,7 @@ import (
 	"github.com/quantumlife/quantumlife/internal/identity"
 	"github.com/quantumlife/quantumlife/internal/llm"
 	"github.com/quantumlife/quantumlife/internal/memory"
+	"github.com/quantumlife/quantumlife/internal/spaces/calendar"
 	"github.com/quantumlife/quantumlife/internal/spaces/gmail"
 	"github.com/quantumlife/quantumlife/internal/storage"
 	"github.com/quantumlife/quantumlife/internal/vectors"
@@ -76,6 +77,7 @@ For more information, visit: https://github.com/quantumlife-hq/quantumlife`,
 	rootCmd.AddCommand(agentCmd())
 	rootCmd.AddCommand(chatCmd())
 	rootCmd.AddCommand(spacesCmd())
+	rootCmd.AddCommand(calendarCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -773,7 +775,9 @@ func spacesCmd() *cobra.Command {
 			switch provider {
 			case "gmail":
 				return addGmailSpace()
-			case "outlook", "calendar", "gdrive", "dropbox":
+			case "calendar":
+				return addCalendarSpace()
+			case "outlook", "gdrive", "dropbox":
 				fmt.Printf("Provider '%s' is coming soon!\n", provider)
 				return nil
 			default:
@@ -781,8 +785,8 @@ func spacesCmd() *cobra.Command {
 				fmt.Println()
 				fmt.Println("Available providers:")
 				fmt.Println("   gmail    - Google Gmail")
+				fmt.Println("   calendar - Google Calendar")
 				fmt.Println("   outlook  - Microsoft Outlook (coming soon)")
-				fmt.Println("   calendar - Google Calendar (coming soon)")
 				fmt.Println("   gdrive   - Google Drive (coming soon)")
 				return nil
 			}
@@ -1060,6 +1064,8 @@ func syncSpace(db *storage.DB, spaceStore *storage.SpaceStore, credStore *storag
 	switch space.Provider {
 	case "gmail":
 		return syncGmailSpace(db, spaceStore, space, tokenData)
+	case "google_calendar":
+		return syncCalendarSpace(db, spaceStore, space, tokenData)
 	default:
 		return fmt.Errorf("sync not implemented for provider: %s", space.Provider)
 	}
@@ -1140,6 +1146,425 @@ func openBrowser(url string) error {
 	}
 
 	return cmd.Start()
+}
+
+// addCalendarSpace handles Google Calendar OAuth flow
+func addCalendarSpace() error {
+	// Check for OAuth credentials
+	clientID := os.Getenv("GOOGLE_CLIENT_ID")
+	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
+
+	if clientID == "" || clientSecret == "" {
+		fmt.Println("Google Calendar OAuth credentials not configured.")
+		fmt.Println()
+		fmt.Println("To connect Google Calendar, you need Google OAuth credentials:")
+		fmt.Println("   1. Go to https://console.cloud.google.com/")
+		fmt.Println("   2. Create a project and enable Calendar API")
+		fmt.Println("   3. Create OAuth 2.0 credentials (Desktop app)")
+		fmt.Println("   4. Set environment variables:")
+		fmt.Println("      export GOOGLE_CLIENT_ID=your_client_id")
+		fmt.Println("      export GOOGLE_CLIENT_SECRET=your_client_secret")
+		return nil
+	}
+
+	dbPath := filepath.Join(dataDir, "quantumlife.db")
+	db, err := storage.Open(storage.Config{Path: dbPath})
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	// Load identity
+	identityStore := storage.NewIdentityStore(db)
+	you, encryptedKeys, err := identityStore.LoadIdentity()
+	if err != nil || you == nil {
+		return fmt.Errorf("no identity found - run 'ql init' first")
+	}
+
+	// Get passphrase
+	fmt.Print("Passphrase: ")
+	passphrase, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return fmt.Errorf("failed to read passphrase: %w", err)
+	}
+	fmt.Println()
+
+	idMgr := identity.NewManager(identityStore)
+	if err := idMgr.Unlock(you, encryptedKeys, string(passphrase)); err != nil {
+		return fmt.Errorf("invalid passphrase")
+	}
+
+	// Create Calendar space
+	spaceID := core.SpaceID(uuid.New().String())
+	calendarSpace := calendar.New(calendar.Config{
+		ID:           spaceID,
+		Name:         "Google Calendar",
+		DefaultHatID: core.HatPersonal,
+		OAuthConfig:  calendar.DefaultOAuthConfig(),
+	})
+
+	// Start local auth server
+	authServer := calendar.NewLocalAuthServer(8765)
+	if err := authServer.Start(8765); err != nil {
+		return fmt.Errorf("failed to start auth server: %w", err)
+	}
+	defer authServer.Stop(context.Background())
+
+	// Generate state for CSRF protection
+	state := uuid.New().String()
+
+	// Get auth URL and open browser
+	authURL := calendarSpace.GetAuthURL(state)
+
+	fmt.Println()
+	fmt.Println("Opening browser for Google Calendar authorization...")
+	fmt.Println()
+	fmt.Println("If browser doesn't open, visit this URL:")
+	fmt.Println(authURL)
+	fmt.Println()
+
+	// Open browser
+	openBrowser(authURL)
+
+	// Wait for callback
+	fmt.Println("Waiting for authorization...")
+	code, err := authServer.WaitForCode(5 * time.Minute)
+	if err != nil {
+		return fmt.Errorf("authorization failed: %w", err)
+	}
+
+	// Exchange code for token
+	ctx := context.Background()
+	if err := calendarSpace.CompleteOAuth(ctx, code); err != nil {
+		return fmt.Errorf("failed to complete OAuth: %w", err)
+	}
+
+	// Save space to database
+	spaceStore := storage.NewSpaceStore(db)
+	spaceRecord := &storage.SpaceRecord{
+		ID:           spaceID,
+		Type:         core.SpaceTypeCalendar,
+		Provider:     "google_calendar",
+		Name:         "Google Calendar - " + calendarSpace.EmailAddress(),
+		IsConnected:  true,
+		SyncStatus:   "idle",
+		SyncCursor:   calendarSpace.GetSyncCursor(),
+		DefaultHatID: core.HatPersonal,
+		Settings:     make(map[string]interface{}),
+	}
+
+	if err := spaceStore.Create(spaceRecord); err != nil {
+		return fmt.Errorf("failed to save space: %w", err)
+	}
+
+	// Save encrypted credentials
+	token := calendarSpace.GetToken()
+	tokenData, err := calendar.TokenToJSON(token)
+	if err != nil {
+		return fmt.Errorf("failed to serialize token: %w", err)
+	}
+
+	credStore := storage.NewCredentialStore(db, idMgr)
+	if err := credStore.Store(spaceID, "oauth2", tokenData, &token.Expiry); err != nil {
+		return fmt.Errorf("failed to save credentials: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("Google Calendar connected successfully!\n")
+	fmt.Printf("   Account: %s\n", calendarSpace.EmailAddress())
+	fmt.Printf("   Space ID: %s\n", spaceID)
+	fmt.Println()
+	fmt.Println("Run 'ql calendar today' to see today's events.")
+
+	return nil
+}
+
+// syncCalendarSpace syncs a Calendar space
+func syncCalendarSpace(db *storage.DB, spaceStore *storage.SpaceStore, space *storage.SpaceRecord, tokenData []byte) error {
+	// Parse token
+	token, err := calendar.TokenFromJSON(tokenData)
+	if err != nil {
+		return fmt.Errorf("invalid token data: %w", err)
+	}
+
+	// Create Calendar space
+	calendarSpace := calendar.New(calendar.Config{
+		ID:           space.ID,
+		Name:         space.Name,
+		DefaultHatID: space.DefaultHatID,
+		OAuthConfig:  calendar.DefaultOAuthConfig(),
+	})
+
+	calendarSpace.SetToken(token)
+	calendarSpace.SetSyncCursor(space.SyncCursor)
+
+	// Connect
+	ctx := context.Background()
+	if err := calendarSpace.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+
+	// Sync
+	result, err := calendarSpace.Sync(ctx)
+	if err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+
+	// Update space record
+	now := time.Now()
+	space.LastSyncAt = &now
+	space.SyncCursor = result.Cursor
+	space.SyncStatus = "idle"
+
+	if err := spaceStore.Update(space); err != nil {
+		return fmt.Errorf("failed to update space: %w", err)
+	}
+
+	fmt.Printf("   Found %d events for the next 30 days (took %s)\n", result.NewItems, result.Duration.Round(time.Millisecond))
+
+	// Check if token was refreshed
+	newToken := calendarSpace.GetToken()
+	if newToken.AccessToken != token.AccessToken {
+		fmt.Println("   Token refreshed")
+	}
+
+	return nil
+}
+
+// calendarCmd handles calendar operations
+func calendarCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "calendar",
+		Short: "Calendar operations",
+		Long: `Manage your calendar events and schedule.
+
+Examples:
+  ql calendar today    - Show today's events
+  ql calendar week     - Show this week's events
+  ql calendar add      - Add a new event`,
+	}
+
+	// calendar today
+	todayCmd := &cobra.Command{
+		Use:   "today",
+		Short: "Show today's events",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			calSpace, err := getCalendarSpace()
+			if err != nil {
+				return err
+			}
+
+			ctx := context.Background()
+			events, err := calSpace.GetTodayEvents(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to get events: %w", err)
+			}
+
+			if len(events) == 0 {
+				fmt.Println("No events scheduled for today.")
+				return nil
+			}
+
+			fmt.Println("Today's Events")
+			fmt.Println(strings.Repeat("-", 40))
+			for _, event := range events {
+				timeStr := event.Start.Format("3:04 PM")
+				if event.AllDay {
+					timeStr = "All Day"
+				}
+				fmt.Printf("%s  %s\n", timeStr, event.Summary)
+				if event.Location != "" {
+					fmt.Printf("        📍 %s\n", event.Location)
+				}
+			}
+			return nil
+		},
+	}
+
+	// calendar week
+	weekCmd := &cobra.Command{
+		Use:   "week",
+		Short: "Show this week's events",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			calSpace, err := getCalendarSpace()
+			if err != nil {
+				return err
+			}
+
+			ctx := context.Background()
+			events, err := calSpace.GetUpcomingEvents(ctx, 7)
+			if err != nil {
+				return fmt.Errorf("failed to get events: %w", err)
+			}
+
+			if len(events) == 0 {
+				fmt.Println("No events scheduled for the next 7 days.")
+				return nil
+			}
+
+			fmt.Println("Upcoming Events (7 days)")
+			fmt.Println(strings.Repeat("-", 40))
+
+			currentDay := ""
+			for _, event := range events {
+				day := event.Start.Format("Monday, Jan 2")
+				if day != currentDay {
+					fmt.Printf("\n%s\n", day)
+					currentDay = day
+				}
+				timeStr := event.Start.Format("3:04 PM")
+				if event.AllDay {
+					timeStr = "All Day"
+				}
+				fmt.Printf("  %s  %s\n", timeStr, event.Summary)
+			}
+			return nil
+		},
+	}
+
+	// calendar add
+	addCmd := &cobra.Command{
+		Use:   "add [title]",
+		Short: "Add a new event (quick add with natural language)",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			calSpace, err := getCalendarSpace()
+			if err != nil {
+				return err
+			}
+
+			text := strings.Join(args, " ")
+
+			ctx := context.Background()
+			event, err := calSpace.QuickAddEvent(ctx, text)
+			if err != nil {
+				return fmt.Errorf("failed to add event: %w", err)
+			}
+
+			fmt.Printf("Event created: %s\n", event.Summary)
+			fmt.Printf("   When: %s\n", event.Start.Format("Mon, Jan 2 at 3:04 PM"))
+			if event.Link != "" {
+				fmt.Printf("   Link: %s\n", event.Link)
+			}
+			return nil
+		},
+	}
+
+	// calendar list
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List available calendars",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			calSpace, err := getCalendarSpace()
+			if err != nil {
+				return err
+			}
+
+			ctx := context.Background()
+			calendars, err := calSpace.ListCalendars(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to list calendars: %w", err)
+			}
+
+			fmt.Println("Calendars")
+			fmt.Println(strings.Repeat("-", 40))
+			for _, cal := range calendars {
+				primary := ""
+				if cal.Primary {
+					primary = " (primary)"
+				}
+				fmt.Printf("   %s%s\n", cal.Summary, primary)
+				fmt.Printf("      ID: %s\n", cal.ID)
+			}
+			return nil
+		},
+	}
+
+	cmd.AddCommand(todayCmd, weekCmd, addCmd, listCmd)
+	return cmd
+}
+
+// getCalendarSpace retrieves the connected calendar space
+func getCalendarSpace() (*calendar.Space, error) {
+	dbPath := filepath.Join(dataDir, "quantumlife.db")
+	db, err := storage.Open(storage.Config{Path: dbPath})
+	if err != nil {
+		return nil, err
+	}
+
+	spaceStore := storage.NewSpaceStore(db)
+	spaces, err := spaceStore.GetAll()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	// Find calendar space
+	var calendarRecord *storage.SpaceRecord
+	for _, s := range spaces {
+		if s.Provider == "google_calendar" && s.IsConnected {
+			calendarRecord = s
+			break
+		}
+	}
+
+	if calendarRecord == nil {
+		db.Close()
+		return nil, fmt.Errorf("no calendar connected. Run 'ql spaces add calendar' first")
+	}
+
+	// Load identity
+	identityStore := storage.NewIdentityStore(db)
+	you, encryptedKeys, err := identityStore.LoadIdentity()
+	if err != nil || you == nil {
+		db.Close()
+		return nil, fmt.Errorf("no identity found - run 'ql init' first")
+	}
+
+	// Get passphrase
+	fmt.Print("Passphrase: ")
+	passphrase, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to read passphrase: %w", err)
+	}
+	fmt.Println()
+
+	idMgr := identity.NewManager(identityStore)
+	if err := idMgr.Unlock(you, encryptedKeys, string(passphrase)); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("invalid passphrase")
+	}
+
+	credStore := storage.NewCredentialStore(db, idMgr)
+	tokenData, err := credStore.Get(calendarRecord.ID)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to load credentials: %w", err)
+	}
+
+	token, err := calendar.TokenFromJSON(tokenData)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("invalid token data: %w", err)
+	}
+
+	calSpace := calendar.New(calendar.Config{
+		ID:           calendarRecord.ID,
+		Name:         calendarRecord.Name,
+		DefaultHatID: calendarRecord.DefaultHatID,
+		OAuthConfig:  calendar.DefaultOAuthConfig(),
+	})
+
+	calSpace.SetToken(token)
+
+	ctx := context.Background()
+	if err := calSpace.Connect(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+
+	return calSpace, nil
 }
 
 // Ensure oauth2.Token is used (for imports)
