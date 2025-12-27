@@ -17,6 +17,7 @@ import (
 
 	"github.com/quantumlife/quantumlife/internal/agent"
 	"github.com/quantumlife/quantumlife/internal/core"
+	"github.com/quantumlife/quantumlife/internal/learning"
 	"github.com/quantumlife/quantumlife/internal/storage"
 )
 
@@ -39,6 +40,9 @@ type Server struct {
 	spaceStore    *storage.SpaceStore
 	identityStore *storage.IdentityStore
 
+	// Learning
+	learningService *learning.Service
+
 	// State
 	identity *core.You
 
@@ -47,23 +51,25 @@ type Server struct {
 
 // Config for the server
 type Config struct {
-	Port     int
-	Agent    *agent.Agent
-	DB       *storage.DB
-	Identity *core.You
+	Port            int
+	Agent           *agent.Agent
+	DB              *storage.DB
+	Identity        *core.You
+	LearningService *learning.Service
 }
 
 // New creates a new API server
 func New(cfg Config) *Server {
 	s := &Server{
-		agent:         cfg.Agent,
-		db:            cfg.DB,
-		identity:      cfg.Identity,
-		hatStore:      storage.NewHatStore(cfg.DB),
-		itemStore:     storage.NewItemStore(cfg.DB),
-		spaceStore:    storage.NewSpaceStore(cfg.DB),
-		identityStore: storage.NewIdentityStore(cfg.DB),
-		wsHub:         NewWebSocketHub(),
+		agent:           cfg.Agent,
+		db:              cfg.DB,
+		identity:        cfg.Identity,
+		hatStore:        storage.NewHatStore(cfg.DB),
+		itemStore:       storage.NewItemStore(cfg.DB),
+		spaceStore:      storage.NewSpaceStore(cfg.DB),
+		identityStore:   storage.NewIdentityStore(cfg.DB),
+		learningService: cfg.LearningService,
+		wsHub:           NewWebSocketHub(),
 	}
 
 	s.setupRouter()
@@ -131,6 +137,12 @@ func (s *Server) setupRouter() {
 
 		// Stats
 		r.Get("/stats", s.handleGetStats)
+
+		// Learning (if service is configured)
+		if s.learningService != nil {
+			learningHandlers := NewLearningHandlers(s.learningService, s)
+			learningHandlers.RegisterRoutes(r)
+		}
 	})
 
 	// WebSocket
@@ -480,12 +492,22 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 		hatCounts[string(hat.ID)] = count
 	}
 
-	s.respondJSON(w, http.StatusOK, map[string]interface{}{
+	result := map[string]interface{}{
 		"identity":       s.identity.Name,
 		"total_items":    itemCount,
 		"total_memories": agentStats.TotalMemories,
 		"total_spaces":   len(spaces),
 		"items_by_hat":   hatCounts,
 		"agent_running":  agentStats.Running,
-	})
+	}
+
+	// Include learning stats if available
+	if s.learningService != nil {
+		learningStats, err := s.learningService.GetStats(r.Context())
+		if err == nil {
+			result["learning"] = learningStats
+		}
+	}
+
+	s.respondJSON(w, http.StatusOK, result)
 }
