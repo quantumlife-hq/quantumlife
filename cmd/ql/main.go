@@ -44,11 +44,22 @@ func main() {
 		Short: "QuantumLife - Your Life Operating System",
 		Long: `QuantumLife is your personal AI-powered life operating system.
 
-It brings all aspects of your life together - email, calendar,
-tasks, finances, health, and more - managed by an AI agent that
-learns your preferences and acts on your behalf.
+It brings all aspects of your life together - email, calendar, tasks,
+finances, health, and more - managed by an AI agent that learns your
+preferences and acts on your behalf.
 
-Your data stays on YOUR devices. Always.`,
+Your data stays on YOUR devices. Always.
+
+Quick Start:
+  ql init                 Create your encrypted identity
+  ql status               Check your QuantumLife status
+  ql spaces add gmail     Connect your Gmail
+  ql chat                 Talk to your AI agent
+
+Start the full daemon:
+  quantumlife             Starts API server + Agent + Web UI
+
+For more information, visit: https://github.com/quantumlife-hq/quantumlife`,
 	}
 
 	// Global flags
@@ -74,7 +85,7 @@ Your data stays on YOUR devices. Always.`,
 
 // initCmd initializes a new QuantumLife identity
 func initCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize QuantumLife with a new identity",
 		Long: `Creates your QuantumLife identity with cryptographic keys.
@@ -86,6 +97,12 @@ This generates:
 
 Your keys are encrypted with your passphrase and stored locally.
 NEVER share your private keys or passphrase.`,
+		Example: `  # Create a new identity
+  ql init
+
+  # You'll be prompted for:
+  # - Your name (what the agent calls you)
+  # - A passphrase (min 8 characters, encrypts your keys)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Check if already initialized
 			dbPath := filepath.Join(dataDir, "quantumlife.db")
@@ -178,6 +195,7 @@ NEVER share your private keys or passphrase.`,
 			return nil
 		},
 	}
+	return cmd
 }
 
 // statusCmd shows the current QuantumLife status
@@ -585,6 +603,19 @@ func chatCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "chat",
 		Short: "Chat with your agent",
+		Long: `Start an interactive chat session with your QuantumLife agent.
+
+The agent can help you:
+- Understand your hats and how items are organized
+- Remember preferences and facts about your life
+- Answer questions about your data and patterns`,
+		Example: `  # Start an interactive chat
+  ql chat
+
+  # In the chat, try:
+  # - "What hats do I have?"
+  # - "Remember that I prefer morning meetings"
+  # - "What do you know about my preferences?"`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			db, vectorStore, embedder, err := initComponents()
 			if err != nil {

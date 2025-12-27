@@ -2,135 +2,205 @@
 
 **The Life Operating System**
 
-Your life has an API now. Meet your Agent.
+QuantumLife is an AI-powered personal operating system that brings all aspects of your life together - email, calendar, tasks, finances, health, and more - managed by an autonomous AI agent that learns your preferences and acts on your behalf.
 
----
+**Your data stays on YOUR devices. Always.**
 
-## What is QuantumLife?
+## Features
 
-QuantumLife is the operating system for a human life. Not another productivity app. Not another todo list. A fundamentally new way to manage everything that flows through your existence.
-
-**Core Principles:**
-- **YOU are the center** - Not your email, calendar, or todos. YOU.
-- **Agent-first** - Your digital twin handles 99% of decisions autonomously
-- **Device-centric identity** - Your identity lives on YOUR devices, not our servers
-- **Post-quantum secure** - Built for the next 50 years of cryptography
-- **Local-first** - Your data never leaves your devices unless YOU decide
-
-## The Data Model
-
-```
-YOU (singleton)
- │
- ├── HATS (roles you play: Parent, Professional, Partner...)
- ├── SPACES (data sources: Gmail, Calendar, Drive, Banks...)
- ├── ITEMS (everything that flows through: emails, events, docs...)
- ├── AGENT (your digital twin that watches, routes, decides)
- └── CONNECTIONS (family mesh, professional network, services)
-```
-
-**Key Insight:** An email from your kid's school arrives in Gmail (a Space). But it's not an "email" - it's a PARENT item. The Agent routes it to your Parent Hat based on CONTENT, not source.
+- **12 Life Hats** - Organize everything by role: Parent, Professional, Partner, Health, Finance, and more
+- **AI Agent** - Your autonomous digital twin that classifies, prioritizes, and acts
+- **Semantic Memory** - The agent remembers your preferences and learns over time
+- **Gmail Integration** - Connect your email, auto-classify to the right hat
+- **Post-Quantum Crypto** - Future-proof security with ML-KEM and ML-DSA
+- **Local-First** - All data encrypted on your device, no cloud required
+- **Web Dashboard** - Beautiful UI to view hats, items, and chat with your agent
 
 ## Quick Start
 
 ### Prerequisites
 
 - Go 1.23+
-- Ollama (for local LLM)
-- SQLite3
+- Docker (for Qdrant and Ollama)
+- Anthropic API key (for Claude)
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/quantumlife/quantumlife.git
+git clone https://github.com/quantumlife-hq/quantumlife.git
 cd quantumlife
 
-# Install dependencies
-go mod tidy
+# Build
+go build -o ql ./cmd/ql
+go build -o quantumlife ./cmd/quantumlife
 
-# Run the daemon
-go run cmd/quantumlife/main.go
+# Initialize your identity
+./ql init
 
-# Or use the CLI
-go run cmd/ql/main.go
+# Start services
+docker-compose up -d qdrant ollama
+docker exec -it quantumlife-ollama-1 ollama pull nomic-embed-text
+
+# Set API key
+export ANTHROPIC_API_KEY=your_key_here
+
+# Start QuantumLife
+./quantumlife
 ```
 
-### First Run
+Open http://localhost:8080 in your browser.
+
+### Docker Deployment
 
 ```bash
-# Initialize your identity
-ql init
+# Set your API key
+export ANTHROPIC_API_KEY=your_key_here
 
-# Connect Gmail
-ql space add gmail
+# Start everything
+docker-compose up -d
 
-# Talk to your agent
-ql chat "What's my day looking like?"
+# Initialize identity (first time only)
+docker exec -it quantumlife-quantumlife-1 /app/ql init
 ```
 
-## Architecture Overview
+## Usage
+
+### CLI Commands
+
+```bash
+# Identity
+ql init                    # Create your identity
+ql status                  # Check status
+
+# Hats
+ql hats                    # List all hats
+
+# Memory
+ql memory store "fact"     # Store a memory
+ql memory search "query"   # Search memories
+ql memory stats            # Memory statistics
+
+# Spaces
+ql spaces list             # List connected spaces
+ql spaces add gmail        # Connect Gmail
+ql spaces sync             # Sync all spaces
+
+# Agent
+ql chat                    # Chat with your agent
+ql agent status            # Agent status
+
+# Server
+quantumlife                # Start the daemon
+```
+
+### Web Interface
+
+- **Dashboard** - Overview with stats and hat cards
+- **Hats** - View and manage your 12 life domains
+- **Items** - Browse all items, filter by hat
+- **Chat** - Talk to your AI agent
+- **Spaces** - Manage connected data sources
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│         SQLite + SQLCipher              │
-│         (Encrypted relational)          │
-└───────────────────┬─────────────────────┘
-                    │ IDs link to vectors
-                    ▼
-┌─────────────────────────────────────────┐
-│         Qdrant Embedded                 │
-│         (Vector search)                 │
-└─────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────┐
-│         Agent Brain                     │
-│  ┌─────────────────────────────────┐   │
-│  │ Working → Short-term → Episodic │   │
-│  │ Semantic → Procedural → Implicit│   │
-│  └─────────────────────────────────┘   │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        QUANTUMLIFE                              │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │    YOU   │──│   HATS   │──│  SPACES  │──│  ITEMS   │       │
+│  │(identity)│  │ (roles)  │  │(sources) │  │(everything│       │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘       │
+│       │                                          │             │
+│       └──────────────────┬───────────────────────┘             │
+│                          │                                     │
+│                    ┌──────────┐                                │
+│                    │   AGENT  │                                │
+│                    │ (your AI │                                │
+│                    │   twin)  │                                │
+│                    └──────────┘                                │
+│                          │                                     │
+│            ┌─────────────┼─────────────┐                       │
+│            │             │             │                       │
+│      ┌──────────┐  ┌──────────┐  ┌──────────┐                 │
+│      │  MEMORY  │  │  CLAUDE  │  │ CLASSIFY │                 │
+│      │ (vector) │  │  (LLM)   │  │  (route) │                 │
+│      └──────────┘  └──────────┘  └──────────┘                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Tech Stack:**
-- **Language:** Go 1.23+
-- **Storage:** SQLite + SQLCipher (encrypted), Qdrant (vectors)
-- **Crypto:** Ed25519 + ML-DSA-65 (hybrid classical/post-quantum)
-- **AI:** Claude Opus 4.5 (cloud), Ollama (local)
-- **UI:** Wails (Go + Svelte)
+## Security
+
+QuantumLife uses state-of-the-art cryptography:
+
+- **Identity Keys**: Ed25519 (classical) + ML-DSA-65 (post-quantum)
+- **Key Exchange**: X25519 (classical) + ML-KEM-768 (post-quantum)
+- **Database Encryption**: SQLCipher with AES-256-GCM
+- **Key Derivation**: Argon2id
+- **Credential Encryption**: XChaCha20-Poly1305
+
+All keys are encrypted with your passphrase and stored locally.
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Language | Go 1.23 |
+| Database | SQLite + SQLCipher |
+| Vectors | Qdrant |
+| Embeddings | Ollama (nomic-embed-text) |
+| LLM | Claude (Anthropic) |
+| Crypto | cloudflare/circl |
+| HTTP | Chi router |
+| WebSocket | Gorilla WebSocket |
+| UI | Tailwind CSS |
 
 ## Project Structure
 
 ```
 quantumlife/
 ├── cmd/
-│   ├── quantumlife/     # Main daemon
+│   ├── quantumlife/     # Unified daemon (API + Agent + Sync)
 │   └── ql/              # CLI tool
 ├── internal/
-│   ├── core/            # Core types
-│   ├── identity/        # Identity & crypto
-│   ├── storage/         # SQLite + Qdrant
+│   ├── core/            # Core types (You, Hat, Item, Space)
+│   ├── identity/        # Identity & post-quantum crypto
+│   ├── storage/         # SQLite stores
 │   ├── memory/          # Agent memory system
-│   ├── hats/            # Hat management
-│   ├── spaces/          # Data connectors
-│   ├── items/           # Item processing
+│   ├── vectors/         # Qdrant client
+│   ├── embeddings/      # Ollama embeddings
 │   ├── agent/           # The Agent brain
-│   ├── sync/            # Device sync (CRDT)
-│   ├── ledger/          # Audit trail
-│   └── api/             # HTTP/WebSocket API
-├── pkg/mobile/          # gomobile exports
-├── migrations/          # SQL migrations
-├── web/                 # Web UI (Svelte)
-└── docs/                # Documentation
+│   ├── llm/             # Claude API client
+│   ├── spaces/          # Data connectors (Gmail, etc.)
+│   ├── api/             # HTTP/WebSocket API
+│   ├── config/          # Configuration
+│   └── logging/         # Structured logging
+├── test/                # Integration tests
+├── docs/                # Documentation
+├── Dockerfile           # Container build
+└── docker-compose.yml   # Full stack deployment
 ```
 
-## Documentation
+## Project Stats
 
-- [Vision](docs/VISION.md) - Full vision and 10-year roadmap
-- [Architecture](docs/ARCHITECTURE.md) - Technical deep dive
-- [Memory System](docs/MEMORY.md) - How the Agent remembers
-- [API Reference](docs/API.md) - REST + WebSocket API
+- **Lines of Code**: ~8,000
+- **Packages**: 15+
+- **API Endpoints**: 12
+- **Build Time**: <10 seconds
+
+## Roadmap
+
+- [x] Identity & Post-Quantum Crypto
+- [x] Memory System (Episodic, Semantic, Procedural)
+- [x] Agent Core (Watch, Think, Decide, Act)
+- [x] Gmail Integration
+- [x] Web Dashboard
+- [ ] Calendar Integration
+- [ ] Mobile App (iOS/Android)
+- [ ] Agent-to-Agent Communication
+- [ ] Family Mesh Networking
 
 ## Development
 
@@ -138,51 +208,34 @@ quantumlife/
 # Run tests
 go test ./...
 
-# Run with hot reload (requires air)
-air
+# Run integration tests
+go test ./test/... -v
 
 # Build for production
-go build -o bin/quantumlife cmd/quantumlife/main.go
-go build -o bin/ql cmd/ql/main.go
+go build -o bin/quantumlife ./cmd/quantumlife
+go build -o bin/ql ./cmd/ql
 
-# Build for mobile
-gomobile bind -target=ios ./pkg/mobile
-gomobile bind -target=android ./pkg/mobile
+# Build Docker image
+docker build -t quantumlife .
 ```
+
+## Documentation
+
+- [Vision](docs/VISION.md) - Full vision and roadmap
+- [Architecture](docs/ARCHITECTURE.md) - Technical deep dive
+- [Memory System](docs/MEMORY.md) - How the Agent remembers
+- [API Reference](docs/API.md) - REST + WebSocket API
 
 ## Contributing
 
-We move fast. Here's how to contribute:
-
-1. **Check TRACKER.md** - See what's being worked on
-2. **Claim a task** - Comment on the issue
-3. **Ship it** - Working code beats elegant code
-4. **Document as you go** - Every file has a header comment
-
-### Coding Principles
-
-1. Ship > Perfect
-2. Document as you go
-3. Test the critical paths (identity, crypto, memory)
-4. Errors are first-class
-5. Logs tell the story
-6. Security by default
-
-## Security
-
-QuantumLife is built with security as a foundation:
-
-- **Encryption at rest:** AES-256-GCM via SQLCipher
-- **Encryption in transit:** TLS 1.3 + hybrid post-quantum
-- **Key derivation:** Argon2id
-- **Classical keys:** Ed25519 (signing), X25519 (key exchange)
-- **Post-quantum keys:** ML-DSA-65 (signing), ML-KEM-768 (encapsulation)
-
-Your data never touches our servers. Ever.
+1. Check TRACKER.md - See what's being worked on
+2. Claim a task - Comment on the issue
+3. Ship it - Working code beats elegant code
+4. Document as you go - Every file has a header comment
 
 ## License
 
-AGPL-3.0 - See [LICENSE](LICENSE) for details.
+MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
