@@ -13,3 +13,16 @@ quantumlife
 # Test artifacts
 *.test
 coverage.out
+
+# Environment (contains secrets)
+.env
+
+# Backups (large data)
+backups/
+
+# Docker volumes
+data/
+
+# Database files
+*.db
+*.db-journal

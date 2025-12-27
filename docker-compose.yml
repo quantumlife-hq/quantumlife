@@ -8,14 +8,57 @@ services:
     volumes:
       - quantumlife-data:/data
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Database
+      - DATABASE_PATH=/data/quantumlife.db
       - QUANTUMLIFE_DATA_DIR=/data
+
+      # Vector Database
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6334
+
+      # Local AI (Ollama)
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+
+      # Google OAuth (Required for Gmail/Calendar)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URL=${GOOGLE_REDIRECT_URL:-http://localhost:8080/oauth/callback}
+
+      # Azure OpenAI (Optional - for complex tasks)
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4}
+
+      # Plaid (Optional - for Finance)
+      - PLAID_CLIENT_ID=${PLAID_CLIENT_ID}
+      - PLAID_SECRET=${PLAID_SECRET}
+      - PLAID_ENV=${PLAID_ENV:-sandbox}
+
+      # Email Delivery (Optional)
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+
+      # Agent Settings
+      - AUTONOMOUS_THRESHOLD=${AUTONOMOUS_THRESHOLD:-0.9}
+      - SUPERVISED_THRESHOLD=${SUPERVISED_THRESHOLD:-0.7}
     depends_on:
-      - qdrant
-      - ollama
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_started
     restart: unless-stopped
     networks:
       - quantumlife-net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -27,6 +70,8 @@ services:
     restart: unless-stopped
     networks:
       - quantumlife-net
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
 
   ollama:
     image: ollama/ollama:latest
@@ -37,8 +82,14 @@ services:
     restart: unless-stopped
     networks:
       - quantumlife-net
-    # Pull embedding model on first run:
-    # docker exec -it <container> ollama pull nomic-embed-text
+    # Uncomment for GPU support (NVIDIA)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
 
 networks:
   quantumlife-net:
