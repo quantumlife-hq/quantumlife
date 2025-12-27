@@ -18,6 +18,7 @@ import (
 	"github.com/quantumlife/quantumlife/internal/agent"
 	"github.com/quantumlife/quantumlife/internal/core"
 	"github.com/quantumlife/quantumlife/internal/learning"
+	"github.com/quantumlife/quantumlife/internal/proactive"
 	"github.com/quantumlife/quantumlife/internal/storage"
 )
 
@@ -43,6 +44,9 @@ type Server struct {
 	// Learning
 	learningService *learning.Service
 
+	// Proactive
+	proactiveService *proactive.Service
+
 	// State
 	identity *core.You
 
@@ -51,25 +55,27 @@ type Server struct {
 
 // Config for the server
 type Config struct {
-	Port            int
-	Agent           *agent.Agent
-	DB              *storage.DB
-	Identity        *core.You
-	LearningService *learning.Service
+	Port             int
+	Agent            *agent.Agent
+	DB               *storage.DB
+	Identity         *core.You
+	LearningService  *learning.Service
+	ProactiveService *proactive.Service
 }
 
 // New creates a new API server
 func New(cfg Config) *Server {
 	s := &Server{
-		agent:           cfg.Agent,
-		db:              cfg.DB,
-		identity:        cfg.Identity,
-		hatStore:        storage.NewHatStore(cfg.DB),
-		itemStore:       storage.NewItemStore(cfg.DB),
-		spaceStore:      storage.NewSpaceStore(cfg.DB),
-		identityStore:   storage.NewIdentityStore(cfg.DB),
-		learningService: cfg.LearningService,
-		wsHub:           NewWebSocketHub(),
+		agent:            cfg.Agent,
+		db:               cfg.DB,
+		identity:         cfg.Identity,
+		hatStore:         storage.NewHatStore(cfg.DB),
+		itemStore:        storage.NewItemStore(cfg.DB),
+		spaceStore:       storage.NewSpaceStore(cfg.DB),
+		identityStore:    storage.NewIdentityStore(cfg.DB),
+		learningService:  cfg.LearningService,
+		proactiveService: cfg.ProactiveService,
+		wsHub:            NewWebSocketHub(),
 	}
 
 	s.setupRouter()
@@ -142,6 +148,12 @@ func (s *Server) setupRouter() {
 		if s.learningService != nil {
 			learningHandlers := NewLearningHandlers(s.learningService, s)
 			learningHandlers.RegisterRoutes(r)
+		}
+
+		// Proactive (if service is configured)
+		if s.proactiveService != nil {
+			proactiveHandlers := NewProactiveHandlers(s.proactiveService, s)
+			proactiveHandlers.RegisterRoutes(r)
 		}
 	})
 
@@ -506,6 +518,14 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 		learningStats, err := s.learningService.GetStats(r.Context())
 		if err == nil {
 			result["learning"] = learningStats
+		}
+	}
+
+	// Include proactive stats if available
+	if s.proactiveService != nil {
+		proactiveStats, err := s.proactiveService.GetStats(r.Context())
+		if err == nil {
+			result["proactive"] = proactiveStats
 		}
 	}
 
