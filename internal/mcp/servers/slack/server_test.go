@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/quantumlife/quantumlife/internal/testutil/mockservers"
@@ -490,6 +491,46 @@ func TestSlackServer_GetPermalink(t *testing.T) {
 	}
 }
 
+func TestSlackServer_JoinChannel(t *testing.T) {
+	t.Run("join channel successfully", func(t *testing.T) {
+		mock := &MockSlackAPI{
+			PostFunc: func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+				if method != "conversations.join" {
+					t.Errorf("expected method conversations.join, got %s", method)
+				}
+				return map[string]interface{}{
+					"ok": true,
+					"channel": map[string]interface{}{
+						"id":   "C1234567890",
+						"name": "test-channel",
+					},
+				}, nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{"channel": "C1234567890"})
+		result, _ := srv.handleJoinChannel(ctx, argsJSON)
+
+		if result.IsError {
+			t.Errorf("unexpected error: %s", result.Content[0].Text)
+		}
+	})
+
+	t.Run("missing channel", func(t *testing.T) {
+		mock := &MockSlackAPI{}
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		result, _ := srv.handleJoinChannel(ctx, []byte("{}"))
+		if result == nil || !result.IsError {
+			t.Error("expected error result")
+		}
+	})
+}
+
 func TestSlackServer_ToolRegistration(t *testing.T) {
 	mockSlack := mockservers.NewSlackMockServer(t)
 	client := &Client{
@@ -510,6 +551,7 @@ func TestSlackServer_ToolRegistration(t *testing.T) {
 		"slack.get_user",
 		"slack.list_users",
 		"slack.get_permalink",
+		"slack.join_channel",
 	}
 
 	info := srv.Info()
@@ -528,4 +570,123 @@ func TestSlackServer_ToolRegistration(t *testing.T) {
 			t.Errorf("expected tool %q not found", expected)
 		}
 	}
+
+	if len(tools) != len(expectedTools) {
+		t.Errorf("expected %d tools, got %d", len(expectedTools), len(tools))
+	}
+}
+
+func TestGetNestedString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    map[string]interface{}
+		keys     []string
+		expected string
+	}{
+		{
+			name: "single level",
+			input: map[string]interface{}{
+				"name": "test",
+			},
+			keys:     []string{"name"},
+			expected: "test",
+		},
+		{
+			name: "nested level",
+			input: map[string]interface{}{
+				"topic": map[string]interface{}{
+					"value": "General discussion",
+				},
+			},
+			keys:     []string{"topic", "value"},
+			expected: "General discussion",
+		},
+		{
+			name: "missing key",
+			input: map[string]interface{}{
+				"name": "test",
+			},
+			keys:     []string{"missing"},
+			expected: "",
+		},
+		{
+			name: "missing nested key",
+			input: map[string]interface{}{
+				"topic": map[string]interface{}{
+					"other": "value",
+				},
+			},
+			keys:     []string{"topic", "value"},
+			expected: "",
+		},
+		{
+			name:     "empty map",
+			input:    map[string]interface{}{},
+			keys:     []string{"missing"},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getNestedString(tt.input, tt.keys...)
+			if got != tt.expected {
+				t.Errorf("getNestedString() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+// MockSlackAPI for interface-based testing
+type MockSlackAPI struct {
+	GetFunc  func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error)
+	PostFunc func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error)
+}
+
+func (m *MockSlackAPI) Get(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+	if m.GetFunc != nil {
+		return m.GetFunc(ctx, method, params)
+	}
+	return map[string]interface{}{"ok": true}, nil
+}
+
+func (m *MockSlackAPI) Post(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+	if m.PostFunc != nil {
+		return m.PostFunc(ctx, method, data)
+	}
+	return map[string]interface{}{"ok": true}, nil
+}
+
+func TestSlackServer_WithMockInterface(t *testing.T) {
+	t.Run("list channels with mock", func(t *testing.T) {
+		mock := &MockSlackAPI{
+			GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"ok": true,
+					"channels": []interface{}{
+						map[string]interface{}{
+							"id":          "C001",
+							"name":        "general",
+							"is_private":  false,
+							"num_members": 50,
+							"topic":       map[string]interface{}{"value": "General"},
+							"purpose":     map[string]interface{}{"value": "Purpose"},
+						},
+					},
+				}, nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		result, err := srv.handleListChannels(ctx, []byte("{}"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.IsError {
+			t.Errorf("unexpected error result: %s", result.Content[0].Text)
+		}
+	})
+
 }

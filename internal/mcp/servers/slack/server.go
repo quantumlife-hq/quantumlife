@@ -14,6 +14,13 @@ import (
 	"github.com/quantumlife/quantumlife/internal/mcp/server"
 )
 
+// SlackAPI defines the interface for Slack API operations used by the server.
+// This interface allows for mocking in unit tests.
+type SlackAPI interface {
+	Get(ctx context.Context, method string, params url.Values) (map[string]interface{}, error)
+	Post(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error)
+}
+
 // Client is a Slack Web API client
 type Client struct {
 	token      string
@@ -30,14 +37,37 @@ func NewClient(token string) *Client {
 	}
 }
 
+// Get implements SlackAPI.Get
+func (c *Client) Get(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+	return c.get(ctx, method, params)
+}
+
+// Post implements SlackAPI.Post
+func (c *Client) Post(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+	return c.post(ctx, method, data)
+}
+
 // Server wraps the MCP server with Slack functionality
 type Server struct {
 	*server.Server
-	client *Client
+	client SlackAPI
 }
 
 // New creates a new Slack MCP server
 func New(client *Client) *Server {
+	if client == nil {
+		return newServer(nil)
+	}
+	return newServer(client)
+}
+
+// NewWithMockClient creates a new Slack MCP server with a mock client for testing.
+func NewWithMockClient(client SlackAPI) *Server {
+	return newServer(client)
+}
+
+// newServer creates a new Slack MCP server with the given client.
+func newServer(client SlackAPI) *Server {
 	s := &Server{
 		Server: server.New(server.Config{Name: "slack", Version: "1.0.0"}),
 		client: client,
@@ -148,7 +178,7 @@ func (s *Server) handleListChannels(ctx context.Context, raw json.RawMessage) (*
 	params.Set("limit", fmt.Sprintf("%d", limit))
 	params.Set("types", "public_channel")
 
-	resp, err := s.client.get(ctx, "conversations.list", params)
+	resp, err := s.client.Get(ctx, "conversations.list", params)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to list channels: %v", err)), nil
 	}
@@ -190,13 +220,13 @@ func (s *Server) handleGetMessages(ctx context.Context, raw json.RawMessage) (*s
 	params.Set("channel", channel)
 	params.Set("limit", fmt.Sprintf("%d", limit))
 
-	resp, err := s.client.get(ctx, "conversations.history", params)
+	resp, err := s.client.Get(ctx, "conversations.history", params)
 	if err != nil {
 		// Auto-join if not in channel, then retry
 		if strings.Contains(err.Error(), "not_in_channel") {
 			if joinErr := s.joinChannel(ctx, channel); joinErr == nil {
 				// Retry after joining
-				resp, err = s.client.get(ctx, "conversations.history", params)
+				resp, err = s.client.Get(ctx, "conversations.history", params)
 			}
 		}
 		if err != nil {
@@ -249,7 +279,7 @@ func (s *Server) handleSendMessage(ctx context.Context, raw json.RawMessage) (*s
 		data["thread_ts"] = threadTs
 	}
 
-	resp, err := s.client.post(ctx, "chat.postMessage", data)
+	resp, err := s.client.Post(ctx, "chat.postMessage", data)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to send message: %v", err)), nil
 	}
@@ -284,7 +314,7 @@ func (s *Server) handleAddReaction(ctx context.Context, raw json.RawMessage) (*s
 		"name":      strings.Trim(emoji, ":"),
 	}
 
-	_, err = s.client.post(ctx, "reactions.add", data)
+	_, err = s.client.Post(ctx, "reactions.add", data)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to add reaction: %v", err)), nil
 	}
@@ -305,7 +335,7 @@ func (s *Server) handleSearch(ctx context.Context, raw json.RawMessage) (*server
 	params.Set("query", query)
 	params.Set("count", fmt.Sprintf("%d", count))
 
-	resp, err := s.client.get(ctx, "search.messages", params)
+	resp, err := s.client.Get(ctx, "search.messages", params)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to search: %v", err)), nil
 	}
@@ -345,7 +375,7 @@ func (s *Server) handleGetUser(ctx context.Context, raw json.RawMessage) (*serve
 	params := url.Values{}
 	params.Set("user", userID)
 
-	resp, err := s.client.get(ctx, "users.info", params)
+	resp, err := s.client.Get(ctx, "users.info", params)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get user: %v", err)), nil
 	}
@@ -378,7 +408,7 @@ func (s *Server) handleListUsers(ctx context.Context, raw json.RawMessage) (*ser
 	params := url.Values{}
 	params.Set("limit", fmt.Sprintf("%d", limit))
 
-	resp, err := s.client.get(ctx, "users.list", params)
+	resp, err := s.client.Get(ctx, "users.list", params)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to list users: %v", err)), nil
 	}
@@ -426,7 +456,7 @@ func (s *Server) handleGetPermalink(ctx context.Context, raw json.RawMessage) (*
 	params.Set("channel", channel)
 	params.Set("message_ts", timestamp)
 
-	resp, err := s.client.get(ctx, "chat.getPermalink", params)
+	resp, err := s.client.Get(ctx, "chat.getPermalink", params)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get permalink: %v", err)), nil
 	}
@@ -445,7 +475,7 @@ func (s *Server) handleJoinChannel(ctx context.Context, raw json.RawMessage) (*s
 		return server.ErrorResult(err.Error()), nil
 	}
 
-	resp, err := s.client.post(ctx, "conversations.join", map[string]interface{}{
+	resp, err := s.client.Post(ctx, "conversations.join", map[string]interface{}{
 		"channel": channel,
 	})
 	if err != nil {
@@ -462,7 +492,7 @@ func (s *Server) handleJoinChannel(ctx context.Context, raw json.RawMessage) (*s
 
 // joinChannel is a helper that joins a channel (used internally for auto-join)
 func (s *Server) joinChannel(ctx context.Context, channel string) error {
-	_, err := s.client.post(ctx, "conversations.join", map[string]interface{}{
+	_, err := s.client.Post(ctx, "conversations.join", map[string]interface{}{
 		"channel": channel,
 	})
 	return err
