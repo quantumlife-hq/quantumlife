@@ -3,398 +3,930 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuantumLife</title>
+    <title>QuantumLife - Digital Twin</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
         .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-        .chat-message { animation: fadeIn 0.3s ease-in; }
+        .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .hat-card:hover { transform: translateY(-2px); transition: all 0.2s; }
+        @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+        .animate-slideIn { animation: slideIn 0.3s ease-out; }
+        .animate-pulse { animation: pulse 2s infinite; }
+        .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 40px -10px rgba(0,0,0,0.2); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
-</head>
-<body class="bg-gray-50 min-h-screen">
-    <div id="app" class="flex h-screen">
-        <!-- Sidebar -->
-        <aside class="w-64 gradient-bg text-white flex flex-col">
-            <div class="p-6">
-                <h1 class="text-2xl font-bold">QuantumLife</h1>
-                <p class="text-sm opacity-75 mt-1">Your Life OS</p>
-            </div>
-
-            <nav class="flex-1 px-4">
-                <button onclick="showView('dashboard')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
-                    <span class="mr-3">📊</span> Dashboard
-                </button>
-                <button onclick="showView('hats')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
-                    <span class="mr-3">🎭</span> Hats
-                </button>
-                <button onclick="showView('items')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
-                    <span class="mr-3">📬</span> Items
-                </button>
-                <button onclick="showView('chat')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
-                    <span class="mr-3">🤖</span> Agent Chat
-                </button>
-                <button onclick="showView('spaces')" class="w-full text-left px-4 py-3 rounded-lg hover:bg-white/10 mb-2 flex items-center">
-                    <span class="mr-3">📡</span> Spaces
-                </button>
-            </nav>
-
-            <div class="p-4 border-t border-white/20">
-                <div id="identity-info" class="text-sm opacity-75">Loading...</div>
-                <div id="agent-status" class="text-xs mt-2 flex items-center">
-                    <span class="w-2 h-2 rounded-full bg-gray-400 mr-2"></span>
-                    <span>Agent: Checking...</span>
-                </div>
-            </div>
-        </aside>
-
-        <!-- Main Content -->
-        <main class="flex-1 overflow-auto">
-            <!-- Dashboard View -->
-            <div id="view-dashboard" class="p-8">
-                <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
-
-                <div class="grid grid-cols-4 gap-6 mb-8">
-                    <div class="bg-white rounded-xl p-6 shadow-sm">
-                        <div class="text-3xl font-bold text-indigo-600" id="stat-items">0</div>
-                        <div class="text-gray-500">Total Items</div>
-                    </div>
-                    <div class="bg-white rounded-xl p-6 shadow-sm">
-                        <div class="text-3xl font-bold text-purple-600" id="stat-memories">0</div>
-                        <div class="text-gray-500">Memories</div>
-                    </div>
-                    <div class="bg-white rounded-xl p-6 shadow-sm">
-                        <div class="text-3xl font-bold text-pink-600" id="stat-spaces">0</div>
-                        <div class="text-gray-500">Spaces</div>
-                    </div>
-                    <div class="bg-white rounded-xl p-6 shadow-sm">
-                        <div class="text-3xl font-bold text-green-600" id="stat-agent">-</div>
-                        <div class="text-gray-500">Agent Status</div>
-                    </div>
-                </div>
-
-                <h3 class="text-xl font-semibold mb-4">Your Hats</h3>
-                <div id="dashboard-hats" class="grid grid-cols-4 gap-4">
-                    <!-- Hats will be loaded here -->
-                </div>
-            </div>
-
-            <!-- Hats View -->
-            <div id="view-hats" class="p-8 hidden">
-                <h2 class="text-2xl font-bold mb-6">Your Hats</h2>
-                <div id="hats-grid" class="grid grid-cols-3 gap-6">
-                    <!-- Hats will be loaded here -->
-                </div>
-            </div>
-
-            <!-- Items View -->
-            <div id="view-items" class="p-8 hidden">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-bold">Items</h2>
-                    <select id="items-filter" onchange="loadItems()" class="px-4 py-2 border rounded-lg">
-                        <option value="">All Hats</option>
-                    </select>
-                </div>
-                <div id="items-list" class="space-y-4">
-                    <!-- Items will be loaded here -->
-                </div>
-            </div>
-
-            <!-- Chat View -->
-            <div id="view-chat" class="p-8 hidden flex flex-col h-full">
-                <h2 class="text-2xl font-bold mb-6">Chat with Your Agent</h2>
-
-                <div id="chat-messages" class="flex-1 overflow-auto bg-white rounded-xl p-6 mb-4 space-y-4">
-                    <div class="chat-message text-center text-gray-400">
-                        Start a conversation with your AI agent
-                    </div>
-                </div>
-
-                <form onsubmit="sendMessage(event)" class="flex gap-4">
-                    <input type="text" id="chat-input" placeholder="Type a message..."
-                           class="flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <button type="submit" class="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700">
-                        Send
-                    </button>
-                </form>
-            </div>
-
-            <!-- Spaces View -->
-            <div id="view-spaces" class="p-8 hidden">
-                <h2 class="text-2xl font-bold mb-6">Connected Spaces</h2>
-                <div id="spaces-list" class="space-y-4">
-                    <!-- Spaces will be loaded here -->
-                </div>
-            </div>
-        </main>
-    </div>
-
     <script>
-        const API_BASE = '/api/v1';
-        let currentView = 'dashboard';
-        let ws = null;
-
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            loadIdentity();
-            loadStats();
-            loadHats();
-            connectWebSocket();
-        });
-
-        // WebSocket
-        function connectWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
-
-            ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                handleWebSocketMessage(msg);
-            };
-
-            ws.onclose = () => {
-                setTimeout(connectWebSocket, 3000);
-            };
-        }
-
-        function handleWebSocketMessage(msg) {
-            if (msg.type === 'item.created' || msg.type === 'item.updated') {
-                loadStats();
-                if (currentView === 'items') loadItems();
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: { 50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe', 300: '#c4b5fd', 400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6', 900: '#4c1d95' },
+                        secondary: { 50: '#fdf4ff', 100: '#fae8ff', 200: '#f5d0fe', 300: '#f0abfc', 400: '#e879f9', 500: '#d946ef', 600: '#c026d3', 700: '#a21caf', 800: '#86198f', 900: '#701a75' }
+                    }
+                }
             }
         }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="root"></div>
 
-        // API calls
+    <script type="text/babel">
+        const { useState, useEffect, useRef, createContext, useContext } = React;
+        const API_BASE = '/api/v1';
+
+        // Context for global state
+        const AppContext = createContext();
+
+        // API helper
         async function api(endpoint, options = {}) {
             const response = await fetch(API_BASE + endpoint, {
                 headers: { 'Content-Type': 'application/json' },
                 ...options
             });
+            if (!response.ok) throw new Error(`API error: ${response.status}`);
             return response.json();
         }
 
-        async function loadIdentity() {
-            const data = await api('/identity');
-            document.getElementById('identity-info').textContent = `👤 ${data.name}`;
+        // WebSocket hook
+        function useWebSocket() {
+            const [connected, setConnected] = useState(false);
+            const [lastMessage, setLastMessage] = useState(null);
+            const wsRef = useRef(null);
+
+            useEffect(() => {
+                const connect = () => {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+                    ws.onopen = () => setConnected(true);
+                    ws.onclose = () => {
+                        setConnected(false);
+                        setTimeout(connect, 3000);
+                    };
+                    ws.onmessage = (e) => setLastMessage(JSON.parse(e.data));
+                    wsRef.current = ws;
+                };
+                connect();
+                return () => wsRef.current?.close();
+            }, []);
+
+            return { connected, lastMessage };
         }
 
-        async function loadStats() {
-            const data = await api('/stats');
-            document.getElementById('stat-items').textContent = data.total_items;
-            document.getElementById('stat-memories').textContent = data.total_memories;
-            document.getElementById('stat-spaces').textContent = data.total_spaces;
-            document.getElementById('stat-agent').innerHTML = data.agent_running
-                ? '<span class="text-green-500">Running</span>'
-                : '<span class="text-gray-400">Stopped</span>';
-
-            const agentStatus = document.getElementById('agent-status');
-            agentStatus.innerHTML = data.agent_running
-                ? '<span class="w-2 h-2 rounded-full bg-green-400 mr-2"></span><span>Agent: Running</span>'
-                : '<span class="w-2 h-2 rounded-full bg-gray-400 mr-2"></span><span>Agent: Stopped</span>';
-        }
-
-        async function loadHats() {
-            const hats = await api('/hats');
-
-            // Dashboard hats
-            const dashboardHats = document.getElementById('dashboard-hats');
-            dashboardHats.innerHTML = hats.map(hat => `
-                <div class="hat-card bg-white rounded-xl p-4 shadow-sm cursor-pointer"
-                     style="border-left: 4px solid ${hat.color}"
-                     onclick="showHatItems('${hat.id}')">
-                    <div class="text-2xl mb-2">${hat.icon}</div>
-                    <div class="font-medium">${hat.name}</div>
-                    <div class="text-sm text-gray-500">${hat.description || ''}</div>
-                </div>
-            `).join('');
-
-            // Hats grid
-            const hatsGrid = document.getElementById('hats-grid');
-            hatsGrid.innerHTML = hats.map(hat => `
-                <div class="bg-white rounded-xl p-6 shadow-sm" style="border-top: 4px solid ${hat.color}">
-                    <div class="flex items-center mb-4">
-                        <span class="text-3xl mr-3">${hat.icon}</span>
-                        <div>
-                            <div class="font-semibold text-lg">${hat.name}</div>
-                            <div class="text-sm text-gray-500">${hat.id}</div>
-                        </div>
-                    </div>
-                    <p class="text-gray-600 mb-4">${hat.description || 'No description'}</p>
-                    <div class="flex items-center text-sm">
-                        <span class="px-2 py-1 rounded ${hat.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
-                            ${hat.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                        ${hat.is_system ? '<span class="ml-2 px-2 py-1 bg-blue-100 text-blue-700 rounded">System</span>' : ''}
-                    </div>
-                </div>
-            `).join('');
-
-            // Items filter
-            const filter = document.getElementById('items-filter');
-            filter.innerHTML = '<option value="">All Hats</option>' +
-                hats.map(hat => `<option value="${hat.id}">${hat.icon} ${hat.name}</option>`).join('');
-        }
-
-        async function loadItems() {
-            const hatFilter = document.getElementById('items-filter').value;
-            const endpoint = hatFilter ? `/items?hat=${hatFilter}` : '/items';
-            const items = await api(endpoint);
-
-            const itemsList = document.getElementById('items-list');
-            if (!items || items.length === 0) {
-                itemsList.innerHTML = '<div class="text-center text-gray-400 py-8">No items yet</div>';
-                return;
-            }
-
-            itemsList.innerHTML = items.map(item => `
-                <div class="bg-white rounded-xl p-6 shadow-sm">
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <div class="flex items-center mb-2">
-                                <span class="px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700 mr-2">${item.hat_id}</span>
-                                <span class="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">${item.type}</span>
-                                <span class="ml-2 text-sm text-gray-400">${new Date(item.created_at).toLocaleString()}</span>
-                            </div>
-                            <h3 class="font-semibold text-lg">${item.subject || 'No subject'}</h3>
-                            <p class="text-gray-500 text-sm">${item.from || 'Unknown sender'}</p>
-                            ${item.summary ? `<p class="mt-2 text-gray-600">${item.summary}</p>` : ''}
-                        </div>
-                        <div class="text-right">
-                            <div class="text-sm font-medium ${getPriorityColor(item.priority)}">
-                                P${item.priority}
-                            </div>
-                            ${item.sentiment ? `<div class="text-xs text-gray-400 mt-1">${item.sentiment}</div>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        async function loadSpaces() {
-            const spaces = await api('/spaces');
-            const spacesList = document.getElementById('spaces-list');
-
-            if (!spaces || spaces.length === 0) {
-                spacesList.innerHTML = `
-                    <div class="text-center py-8">
-                        <p class="text-gray-400 mb-4">No spaces connected</p>
-                        <p class="text-sm text-gray-500">Use the CLI to add spaces: <code class="bg-gray-100 px-2 py-1 rounded">ql spaces add gmail</code></p>
-                    </div>
-                `;
-                return;
-            }
-
-            spacesList.innerHTML = spaces.map(space => `
-                <div class="bg-white rounded-xl p-6 shadow-sm flex items-center justify-between">
-                    <div class="flex items-center">
-                        <div class="text-3xl mr-4">${getSpaceIcon(space.provider)}</div>
-                        <div>
-                            <div class="font-semibold">${space.name}</div>
-                            <div class="text-sm text-gray-500">${space.provider} - ${space.type}</div>
-                        </div>
-                    </div>
-                    <div class="flex items-center">
-                        <span class="px-3 py-1 rounded ${space.is_connected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
-                            ${space.is_connected ? 'Connected' : 'Disconnected'}
-                        </span>
-                        ${space.last_sync_at ? `<span class="ml-4 text-sm text-gray-400">Last sync: ${new Date(space.last_sync_at).toLocaleString()}</span>` : ''}
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        async function sendMessage(event) {
-            event.preventDefault();
-            const input = document.getElementById('chat-input');
-            const message = input.value.trim();
-            if (!message) return;
-
-            const messagesDiv = document.getElementById('chat-messages');
-
-            // Add user message
-            messagesDiv.innerHTML += `
-                <div class="chat-message flex justify-end">
-                    <div class="bg-indigo-600 text-white px-4 py-2 rounded-xl max-w-md">
-                        ${escapeHtml(message)}
-                    </div>
-                </div>
-            `;
-
-            input.value = '';
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-            // Get response
-            try {
-                const data = await api('/agent/chat', {
-                    method: 'POST',
-                    body: JSON.stringify({ message })
-                });
-
-                messagesDiv.innerHTML += `
-                    <div class="chat-message flex justify-start">
-                        <div class="bg-gray-100 px-4 py-2 rounded-xl max-w-md">
-                            <div class="text-xs text-indigo-600 mb-1">🤖 Agent</div>
-                            ${escapeHtml(data.response)}
-                        </div>
-                    </div>
-                `;
-            } catch (err) {
-                messagesDiv.innerHTML += `
-                    <div class="chat-message flex justify-start">
-                        <div class="bg-red-100 text-red-700 px-4 py-2 rounded-xl max-w-md">
-                            Error: Could not get response
-                        </div>
-                    </div>
-                `;
-            }
-
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        function showView(view) {
-            document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
-            document.getElementById(`view-${view}`).classList.remove('hidden');
-            currentView = view;
-
-            if (view === 'items') loadItems();
-            if (view === 'spaces') loadSpaces();
-        }
-
-        function showHatItems(hatId) {
-            document.getElementById('items-filter').value = hatId;
-            showView('items');
-            loadItems();
-        }
-
-        function getPriorityColor(priority) {
-            const colors = {
-                1: 'text-red-600',
-                2: 'text-orange-600',
-                3: 'text-yellow-600',
-                4: 'text-blue-600',
-                5: 'text-gray-600'
-            };
-            return colors[priority] || 'text-gray-600';
-        }
-
-        function getSpaceIcon(provider) {
+        // Icons component
+        function Icon({ name, className = "w-5 h-5" }) {
             const icons = {
-                gmail: '📧',
-                outlook: '📬',
-                calendar: '📅',
-                gdrive: '📁',
-                dropbox: '📦'
+                dashboard: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>,
+                inbox: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>,
+                hats: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                recommendations: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>,
+                chat: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
+                spaces: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>,
+                settings: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
+                learning: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+                bell: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
+                check: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>,
+                close: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>,
+                chevronRight: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>,
+                refresh: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
+                send: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>,
             };
-            return icons[provider] || '📡';
+            return icons[name] || null;
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        // Sidebar component
+        function Sidebar({ currentView, setCurrentView, identity, wsConnected }) {
+            const navItems = [
+                { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+                { id: 'inbox', label: 'Inbox', icon: 'inbox' },
+                { id: 'hats', label: 'Hats', icon: 'hats' },
+                { id: 'recommendations', label: 'Recommendations', icon: 'recommendations' },
+                { id: 'learning', label: 'Learning', icon: 'learning' },
+                { id: 'chat', label: 'Agent Chat', icon: 'chat' },
+                { id: 'spaces', label: 'Spaces', icon: 'spaces' },
+                { id: 'settings', label: 'Settings', icon: 'settings' },
+            ];
+
+            return (
+                <aside className="w-64 gradient-bg text-white flex flex-col min-h-screen">
+                    <div className="p-6 border-b border-white/10">
+                        <h1 className="text-2xl font-bold">QuantumLife</h1>
+                        <p className="text-sm text-white/70 mt-1">Your Digital Twin</p>
+                    </div>
+
+                    <nav className="flex-1 p-4 space-y-1">
+                        {navItems.map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => setCurrentView(item.id)}
+                                className={`w-full flex items-center px-4 py-3 rounded-lg transition-all ${
+                                    currentView === item.id
+                                        ? 'bg-white/20 text-white'
+                                        : 'text-white/70 hover:bg-white/10 hover:text-white'
+                                }`}
+                            >
+                                <Icon name={item.icon} className="w-5 h-5 mr-3" />
+                                <span className="font-medium">{item.label}</span>
+                            </button>
+                        ))}
+                    </nav>
+
+                    <div className="p-4 border-t border-white/10">
+                        <div className="flex items-center mb-3">
+                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-lg">
+                                {identity?.name?.[0] || '?'}
+                            </div>
+                            <div className="ml-3">
+                                <div className="font-medium">{identity?.name || 'Loading...'}</div>
+                                <div className="text-xs text-white/60">Digital Twin</div>
+                            </div>
+                        </div>
+                        <div className="flex items-center text-xs text-white/60">
+                            <span className={`w-2 h-2 rounded-full mr-2 ${wsConnected ? 'bg-green-400' : 'bg-gray-400'}`}></span>
+                            {wsConnected ? 'Connected' : 'Reconnecting...'}
+                        </div>
+                    </div>
+                </aside>
+            );
         }
+
+        // Stat Card component
+        function StatCard({ label, value, color, icon, trend }) {
+            return (
+                <div className="bg-white rounded-xl p-6 shadow-sm hover-lift transition-all">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <div className={`text-3xl font-bold ${color}`}>{value}</div>
+                            <div className="text-gray-500 mt-1">{label}</div>
+                        </div>
+                        <div className={`w-12 h-12 rounded-lg ${color.replace('text-', 'bg-').replace('-600', '-100')} flex items-center justify-center`}>
+                            <Icon name={icon} className={`w-6 h-6 ${color}`} />
+                        </div>
+                    </div>
+                    {trend && (
+                        <div className={`mt-3 text-sm ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}% from last week
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Activity Feed Item
+        function ActivityItem({ activity }) {
+            return (
+                <div className="flex items-start p-4 hover:bg-gray-50 rounded-lg transition-colors animate-fadeIn">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                        activity.type === 'email' ? 'bg-blue-100' :
+                        activity.type === 'calendar' ? 'bg-green-100' :
+                        activity.type === 'task' ? 'bg-yellow-100' : 'bg-gray-100'
+                    }`}>
+                        {activity.type === 'email' ? '📧' : activity.type === 'calendar' ? '📅' : activity.type === 'task' ? '✓' : '📝'}
+                    </div>
+                    <div className="ml-4 flex-1">
+                        <div className="font-medium text-gray-900">{activity.subject || activity.title}</div>
+                        <div className="text-sm text-gray-500">{activity.from || activity.description}</div>
+                        <div className="text-xs text-gray-400 mt-1">
+                            {new Date(activity.created_at).toLocaleString()}
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                            activity.priority === 1 ? 'bg-red-100 text-red-700' :
+                            activity.priority === 2 ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-100 text-gray-600'
+                        }`}>
+                            P{activity.priority}
+                        </span>
+                    </div>
+                </div>
+            );
+        }
+
+        // Dashboard View
+        function Dashboard({ stats, items, hats }) {
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="flex items-center justify-between mb-8">
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+                            <p className="text-gray-500 mt-1">Your life at a glance</p>
+                        </div>
+                        <button className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center">
+                            <Icon name="refresh" className="w-4 h-4 mr-2" />
+                            Refresh
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-6 mb-8">
+                        <StatCard label="Total Items" value={stats.total_items || 0} color="text-blue-600" icon="inbox" />
+                        <StatCard label="Memories" value={stats.total_memories || 0} color="text-purple-600" icon="learning" />
+                        <StatCard label="Active Hats" value={hats.filter(h => h.is_active).length} color="text-pink-600" icon="hats" />
+                        <StatCard
+                            label="Agent Status"
+                            value={stats.agent_running ? 'Active' : 'Idle'}
+                            color={stats.agent_running ? 'text-green-600' : 'text-gray-600'}
+                            icon="chat"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-6">
+                        <div className="col-span-2">
+                            <div className="bg-white rounded-xl shadow-sm">
+                                <div className="px-6 py-4 border-b border-gray-100">
+                                    <h2 className="font-semibold text-lg">Recent Activity</h2>
+                                </div>
+                                <div className="divide-y divide-gray-50 max-h-96 overflow-auto scrollbar-hide">
+                                    {items.slice(0, 10).map((item, i) => (
+                                        <ActivityItem key={item.id || i} activity={item} />
+                                    ))}
+                                    {items.length === 0 && (
+                                        <div className="p-8 text-center text-gray-400">
+                                            No recent activity
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="bg-white rounded-xl shadow-sm">
+                                <div className="px-6 py-4 border-b border-gray-100">
+                                    <h2 className="font-semibold text-lg">Your Hats</h2>
+                                </div>
+                                <div className="p-4 space-y-3">
+                                    {hats.map(hat => (
+                                        <div
+                                            key={hat.id}
+                                            className="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                                            style={{ borderLeft: `4px solid ${hat.color}` }}
+                                        >
+                                            <span className="text-2xl mr-3">{hat.icon}</span>
+                                            <div>
+                                                <div className="font-medium">{hat.name}</div>
+                                                <div className="text-xs text-gray-500">{hat.id}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Inbox View
+        function Inbox({ items, hats }) {
+            const [filter, setFilter] = useState('');
+            const [statusFilter, setStatusFilter] = useState('');
+
+            const filteredItems = items.filter(item => {
+                if (filter && item.hat_id !== filter) return false;
+                if (statusFilter && item.status !== statusFilter) return false;
+                return true;
+            });
+
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-900">Inbox</h1>
+                            <p className="text-gray-500 mt-1">{filteredItems.length} items</p>
+                        </div>
+                        <div className="flex gap-4">
+                            <select
+                                value={filter}
+                                onChange={e => setFilter(e.target.value)}
+                                className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">All Hats</option>
+                                {hats.map(hat => (
+                                    <option key={hat.id} value={hat.id}>{hat.icon} {hat.name}</option>
+                                ))}
+                            </select>
+                            <select
+                                value={statusFilter}
+                                onChange={e => setStatusFilter(e.target.value)}
+                                className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">All Status</option>
+                                <option value="pending">Pending</option>
+                                <option value="processing">Processing</option>
+                                <option value="completed">Completed</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {filteredItems.map((item, i) => (
+                            <div key={item.id || i} className="bg-white rounded-xl p-6 shadow-sm hover-lift transition-all animate-slideIn" style={{animationDelay: `${i * 50}ms`}}>
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="px-2 py-1 text-xs rounded-full bg-primary-100 text-primary-700">
+                                                {item.hat_id}
+                                            </span>
+                                            <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-600">
+                                                {item.type}
+                                            </span>
+                                            <span className="text-sm text-gray-400">
+                                                {new Date(item.created_at).toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <h3 className="font-semibold text-lg text-gray-900">{item.subject || 'No subject'}</h3>
+                                        <p className="text-gray-500">{item.from || 'Unknown sender'}</p>
+                                        {item.summary && <p className="mt-3 text-gray-600">{item.summary}</p>}
+                                    </div>
+                                    <div className="text-right ml-4">
+                                        <div className={`text-sm font-semibold ${
+                                            item.priority === 1 ? 'text-red-600' :
+                                            item.priority === 2 ? 'text-orange-600' :
+                                            item.priority === 3 ? 'text-yellow-600' :
+                                            'text-gray-500'
+                                        }`}>
+                                            Priority {item.priority}
+                                        </div>
+                                        {item.sentiment && (
+                                            <div className="text-xs text-gray-400 mt-1">{item.sentiment}</div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {filteredItems.length === 0 && (
+                            <div className="text-center py-12 text-gray-400">
+                                <Icon name="inbox" className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                <p>No items match your filters</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Hats View
+        function HatsView({ hats }) {
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Your Hats</h1>
+                        <p className="text-gray-500 mt-1">Life contexts that organize your items</p>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-6">
+                        {hats.map((hat, i) => (
+                            <div
+                                key={hat.id}
+                                className="bg-white rounded-xl p-6 shadow-sm hover-lift transition-all animate-slideIn cursor-pointer"
+                                style={{ borderTop: `4px solid ${hat.color}`, animationDelay: `${i * 100}ms` }}
+                            >
+                                <div className="flex items-center mb-4">
+                                    <span className="text-4xl mr-4">{hat.icon}</span>
+                                    <div>
+                                        <h3 className="font-semibold text-xl">{hat.name}</h3>
+                                        <p className="text-sm text-gray-500">{hat.id}</p>
+                                    </div>
+                                </div>
+                                <p className="text-gray-600 mb-4">{hat.description || 'No description'}</p>
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-3 py-1 text-sm rounded-full ${hat.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                        {hat.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                    {hat.is_system && (
+                                        <span className="px-3 py-1 text-sm rounded-full bg-blue-100 text-blue-700">System</span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // Recommendations View
+        function Recommendations() {
+            const [recommendations, setRecommendations] = useState([]);
+            const [nudges, setNudges] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                Promise.all([
+                    api('/recommendations').catch(() => ({ recommendations: [] })),
+                    api('/nudges').catch(() => ({ nudges: [] }))
+                ]).then(([recsData, nudgesData]) => {
+                    setRecommendations(recsData.recommendations || []);
+                    setNudges(nudgesData.nudges || []);
+                    setLoading(false);
+                });
+            }, []);
+
+            const getPriorityStyle = (priority) => {
+                switch(priority) {
+                    case 1: return 'border-l-4 border-red-500 bg-red-50';
+                    case 2: return 'border-l-4 border-orange-500 bg-orange-50';
+                    case 3: return 'border-l-4 border-yellow-500 bg-yellow-50';
+                    default: return 'border-l-4 border-gray-300 bg-gray-50';
+                }
+            };
+
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Recommendations</h1>
+                        <p className="text-gray-500 mt-1">Proactive suggestions from your digital twin</p>
+                    </div>
+
+                    {loading ? (
+                        <div className="flex justify-center py-12">
+                            <div className="animate-pulse text-gray-400">Loading recommendations...</div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-6">
+                            <div>
+                                <h2 className="text-xl font-semibold mb-4 flex items-center">
+                                    <Icon name="recommendations" className="w-6 h-6 mr-2 text-primary-600" />
+                                    Active Recommendations
+                                </h2>
+                                <div className="space-y-4">
+                                    {recommendations.map((rec, i) => (
+                                        <div key={rec.id || i} className={`rounded-xl p-6 shadow-sm ${getPriorityStyle(rec.priority)}`}>
+                                            <h3 className="font-semibold text-lg mb-2">{rec.title}</h3>
+                                            <p className="text-gray-600 mb-4">{rec.description}</p>
+                                            <div className="flex gap-2">
+                                                {(rec.actions || []).map((action, j) => (
+                                                    <button
+                                                        key={j}
+                                                        className={`px-4 py-2 rounded-lg text-sm ${
+                                                            action.is_primary
+                                                                ? 'bg-primary-600 text-white hover:bg-primary-700'
+                                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                        }`}
+                                                    >
+                                                        {action.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {recommendations.length === 0 && (
+                                        <div className="text-center py-8 text-gray-400 bg-white rounded-xl">
+                                            No active recommendations
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div>
+                                <h2 className="text-xl font-semibold mb-4 flex items-center">
+                                    <Icon name="bell" className="w-6 h-6 mr-2 text-secondary-600" />
+                                    Nudges
+                                </h2>
+                                <div className="space-y-4">
+                                    {nudges.map((nudge, i) => (
+                                        <div key={nudge.id || i} className="bg-white rounded-xl p-6 shadow-sm hover-lift transition-all">
+                                            <div className="flex items-start">
+                                                <span className="text-2xl mr-4">{nudge.icon || '💡'}</span>
+                                                <div className="flex-1">
+                                                    <h3 className="font-semibold">{nudge.title}</h3>
+                                                    <p className="text-gray-600 text-sm mt-1">{nudge.body}</p>
+                                                </div>
+                                                <span className={`px-2 py-1 text-xs rounded-full ${
+                                                    nudge.urgency === 'immediate' ? 'bg-red-100 text-red-700' :
+                                                    nudge.urgency === 'high' ? 'bg-orange-100 text-orange-700' :
+                                                    'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                    {nudge.urgency}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {nudges.length === 0 && (
+                                        <div className="text-center py-8 text-gray-400 bg-white rounded-xl">
+                                            No pending nudges
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Learning View
+        function LearningView() {
+            const [understanding, setUnderstanding] = useState(null);
+            const [patterns, setPatterns] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                Promise.all([
+                    api('/learning/understanding').catch(() => ({})),
+                    api('/learning/patterns').catch(() => ({ patterns: [] }))
+                ]).then(([u, p]) => {
+                    setUnderstanding(u);
+                    setPatterns(p.patterns || []);
+                    setLoading(false);
+                });
+            }, []);
+
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Behavioral Learning</h1>
+                        <p className="text-gray-500 mt-1">How your digital twin understands you</p>
+                    </div>
+
+                    {loading ? (
+                        <div className="flex justify-center py-12">
+                            <div className="animate-pulse text-gray-400">Loading insights...</div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="bg-white rounded-xl p-6 shadow-sm">
+                                <h2 className="text-xl font-semibold mb-4">Understanding Score</h2>
+                                <div className="relative pt-1">
+                                    <div className="flex mb-2 items-center justify-between">
+                                        <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-primary-600 bg-primary-100">
+                                            Confidence
+                                        </span>
+                                        <span className="text-xs font-semibold inline-block text-primary-600">
+                                            {Math.round((understanding?.confidence || 0) * 100)}%
+                                        </span>
+                                    </div>
+                                    <div className="overflow-hidden h-3 mb-4 text-xs flex rounded-full bg-primary-100">
+                                        <div
+                                            style={{ width: `${(understanding?.confidence || 0) * 100}%` }}
+                                            className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary-600 transition-all duration-500"
+                                        ></div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 mt-4">
+                                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                        <div className="text-2xl font-bold text-primary-600">{understanding?.total_signals || 0}</div>
+                                        <div className="text-sm text-gray-500">Signals Captured</div>
+                                    </div>
+                                    <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                        <div className="text-2xl font-bold text-secondary-600">{patterns.length}</div>
+                                        <div className="text-sm text-gray-500">Patterns Detected</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-xl p-6 shadow-sm">
+                                <h2 className="text-xl font-semibold mb-4">Detected Patterns</h2>
+                                <div className="space-y-3 max-h-64 overflow-auto scrollbar-hide">
+                                    {patterns.slice(0, 5).map((pattern, i) => (
+                                        <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-medium text-gray-700">{pattern.type}</span>
+                                                <span className="text-xs text-primary-600">{Math.round(pattern.confidence * 100)}%</span>
+                                            </div>
+                                            <p className="text-sm text-gray-500 mt-1">{pattern.description || 'Pattern detected'}</p>
+                                        </div>
+                                    ))}
+                                    {patterns.length === 0 && (
+                                        <div className="text-center py-4 text-gray-400">
+                                            No patterns detected yet
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="col-span-2 bg-white rounded-xl p-6 shadow-sm">
+                                <h2 className="text-xl font-semibold mb-4">Sender Insights</h2>
+                                <div className="grid grid-cols-4 gap-4">
+                                    {Object.entries(understanding?.sender_profiles || {}).slice(0, 8).map(([email, profile]) => (
+                                        <div key={email} className="p-4 bg-gray-50 rounded-lg">
+                                            <div className="font-medium text-sm truncate" title={email}>{email}</div>
+                                            <div className="text-xs text-gray-500 mt-1">
+                                                Priority: {profile.priority || 'Unknown'}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {Object.keys(understanding?.sender_profiles || {}).length === 0 && (
+                                        <div className="col-span-4 text-center py-4 text-gray-400">
+                                            No sender data collected yet
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Chat View
+        function ChatView() {
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState('');
+            const [loading, setLoading] = useState(false);
+            const messagesEndRef = useRef(null);
+
+            const scrollToBottom = () => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            };
+
+            useEffect(() => {
+                scrollToBottom();
+            }, [messages]);
+
+            const sendMessage = async (e) => {
+                e.preventDefault();
+                if (!input.trim() || loading) return;
+
+                const userMessage = { role: 'user', content: input };
+                setMessages(prev => [...prev, userMessage]);
+                setInput('');
+                setLoading(true);
+
+                try {
+                    const data = await api('/agent/chat', {
+                        method: 'POST',
+                        body: JSON.stringify({ message: input })
+                    });
+                    setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+                } catch (err) {
+                    setMessages(prev => [...prev, { role: 'error', content: 'Failed to get response. Please try again.' }]);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="p-8 h-full flex flex-col animate-fadeIn">
+                    <div className="mb-6">
+                        <h1 className="text-3xl font-bold text-gray-900">Agent Chat</h1>
+                        <p className="text-gray-500 mt-1">Talk to your digital twin</p>
+                    </div>
+
+                    <div className="flex-1 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
+                        <div className="flex-1 overflow-auto p-6 space-y-4">
+                            {messages.length === 0 && (
+                                <div className="text-center text-gray-400 py-12">
+                                    <Icon name="chat" className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                    <p>Start a conversation with your AI agent</p>
+                                </div>
+                            )}
+                            {messages.map((msg, i) => (
+                                <div
+                                    key={i}
+                                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fadeIn`}
+                                >
+                                    <div className={`max-w-xl px-4 py-3 rounded-2xl ${
+                                        msg.role === 'user'
+                                            ? 'bg-primary-600 text-white'
+                                            : msg.role === 'error'
+                                            ? 'bg-red-100 text-red-700'
+                                            : 'bg-gray-100 text-gray-800'
+                                    }`}>
+                                        {msg.role === 'assistant' && (
+                                            <div className="text-xs text-primary-600 mb-1 font-medium">🤖 Agent</div>
+                                        )}
+                                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                                    </div>
+                                </div>
+                            ))}
+                            {loading && (
+                                <div className="flex justify-start animate-fadeIn">
+                                    <div className="bg-gray-100 text-gray-600 px-4 py-3 rounded-2xl">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        <form onSubmit={sendMessage} className="p-4 border-t border-gray-100 flex gap-4">
+                            <input
+                                type="text"
+                                value={input}
+                                onChange={e => setInput(e.target.value)}
+                                placeholder="Type a message..."
+                                className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                                disabled={loading}
+                            />
+                            <button
+                                type="submit"
+                                disabled={loading || !input.trim()}
+                                className="px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center"
+                            >
+                                <Icon name="send" className="w-5 h-5" />
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Spaces View
+        function SpacesView() {
+            const [spaces, setSpaces] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                api('/spaces').then(data => {
+                    setSpaces(Array.isArray(data) ? data : []);
+                    setLoading(false);
+                }).catch(() => setLoading(false));
+            }, []);
+
+            const getSpaceIcon = (provider) => {
+                const icons = { gmail: '📧', outlook: '📬', calendar: '📅', gdrive: '📁', dropbox: '📦' };
+                return icons[provider] || '📡';
+            };
+
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Connected Spaces</h1>
+                        <p className="text-gray-500 mt-1">Integrations and data sources</p>
+                    </div>
+
+                    {loading ? (
+                        <div className="flex justify-center py-12">
+                            <div className="animate-pulse text-gray-400">Loading spaces...</div>
+                        </div>
+                    ) : spaces.length === 0 ? (
+                        <div className="text-center py-12 bg-white rounded-xl shadow-sm">
+                            <Icon name="spaces" className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                            <h3 className="text-lg font-medium text-gray-700 mb-2">No spaces connected</h3>
+                            <p className="text-gray-500 mb-4">Connect your first space using the CLI</p>
+                            <code className="bg-gray-100 px-4 py-2 rounded-lg text-sm">ql spaces add gmail</code>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {spaces.map((space, i) => (
+                                <div key={space.id || i} className="bg-white rounded-xl p-6 shadow-sm flex items-center justify-between hover-lift transition-all">
+                                    <div className="flex items-center">
+                                        <span className="text-4xl mr-4">{getSpaceIcon(space.provider)}</span>
+                                        <div>
+                                            <h3 className="font-semibold text-lg">{space.name}</h3>
+                                            <p className="text-gray-500">{space.provider} - {space.type}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className={`px-3 py-1 rounded-full text-sm ${space.is_connected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            {space.is_connected ? 'Connected' : 'Disconnected'}
+                                        </span>
+                                        {space.last_sync_at && (
+                                            <span className="text-sm text-gray-400">
+                                                Last sync: {new Date(space.last_sync_at).toLocaleString()}
+                                            </span>
+                                        )}
+                                        <button className="p-2 text-gray-400 hover:text-primary-600 transition-colors">
+                                            <Icon name="refresh" className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Settings View
+        function Settings() {
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+                        <p className="text-gray-500 mt-1">Configure your digital twin</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                        <div className="bg-white rounded-xl p-6 shadow-sm">
+                            <h2 className="text-xl font-semibold mb-4">Preferences</h2>
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="font-medium">Enable Notifications</div>
+                                        <div className="text-sm text-gray-500">Get nudges and recommendations</div>
+                                    </div>
+                                    <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-primary-600">
+                                        <span className="inline-block h-4 w-4 transform rounded-full bg-white transition translate-x-6" />
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="font-medium">Auto-Learning</div>
+                                        <div className="text-sm text-gray-500">Learn from your behavior</div>
+                                    </div>
+                                    <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-primary-600">
+                                        <span className="inline-block h-4 w-4 transform rounded-full bg-white transition translate-x-6" />
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="font-medium">Proactive Actions</div>
+                                        <div className="text-sm text-gray-500">Let agent take actions</div>
+                                    </div>
+                                    <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-300">
+                                        <span className="inline-block h-4 w-4 transform rounded-full bg-white transition translate-x-1" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl p-6 shadow-sm">
+                            <h2 className="text-xl font-semibold mb-4">About</h2>
+                            <div className="space-y-3 text-gray-600">
+                                <div className="flex justify-between">
+                                    <span>Version</span>
+                                    <span className="font-mono">1.0.0</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>API Endpoint</span>
+                                    <span className="font-mono text-sm">{window.location.origin}/api/v1</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Main App
+        function App() {
+            const [currentView, setCurrentView] = useState('dashboard');
+            const [identity, setIdentity] = useState(null);
+            const [stats, setStats] = useState({});
+            const [items, setItems] = useState([]);
+            const [hats, setHats] = useState([]);
+            const { connected, lastMessage } = useWebSocket();
+
+            // Load initial data
+            useEffect(() => {
+                Promise.all([
+                    api('/identity').catch(() => ({})),
+                    api('/stats').catch(() => ({})),
+                    api('/hats').catch(() => []),
+                    api('/items').catch(() => [])
+                ]).then(([id, st, h, i]) => {
+                    setIdentity(id);
+                    setStats(st);
+                    setHats(Array.isArray(h) ? h : []);
+                    setItems(Array.isArray(i) ? i : []);
+                });
+            }, []);
+
+            // Handle WebSocket messages
+            useEffect(() => {
+                if (lastMessage) {
+                    if (lastMessage.type === 'item.created' || lastMessage.type === 'item.updated') {
+                        api('/items').then(i => setItems(Array.isArray(i) ? i : [])).catch(() => {});
+                        api('/stats').then(st => setStats(st)).catch(() => {});
+                    }
+                }
+            }, [lastMessage]);
+
+            const renderView = () => {
+                switch (currentView) {
+                    case 'dashboard': return <Dashboard stats={stats} items={items} hats={hats} />;
+                    case 'inbox': return <Inbox items={items} hats={hats} />;
+                    case 'hats': return <HatsView hats={hats} />;
+                    case 'recommendations': return <Recommendations />;
+                    case 'learning': return <LearningView />;
+                    case 'chat': return <ChatView />;
+                    case 'spaces': return <SpacesView />;
+                    case 'settings': return <Settings />;
+                    default: return <Dashboard stats={stats} items={items} hats={hats} />;
+                }
+            };
+
+            return (
+                <div className="flex h-screen">
+                    <Sidebar
+                        currentView={currentView}
+                        setCurrentView={setCurrentView}
+                        identity={identity}
+                        wsConnected={connected}
+                    />
+                    <main className="flex-1 overflow-auto bg-gray-50">
+                        {renderView()}
+                    </main>
+                </div>
+            );
+        }
+
+        // Render
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
