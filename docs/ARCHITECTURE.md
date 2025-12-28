@@ -1,6 +1,38 @@
 # QuantumLife Architecture
 
-**Technical Deep Dive**
+**Technical Deep Dive | Last Updated: December 2025**
+
+---
+
+## Implementation Status Legend
+
+| Symbol | Meaning |
+|--------|---------|
+| ✅ | Fully implemented and tested |
+| ⚠️ | Partially implemented / scaffolding |
+| ❌ | Not yet implemented |
+| 🔌 | Code exists but not wired up |
+
+---
+
+## Quick Status Overview
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Identity & Crypto | ✅ | Post-quantum ready |
+| Storage (SQLite + Qdrant) | ✅ | Full migrations |
+| Gmail Integration | ⚠️ | Read-only, actions incomplete |
+| Calendar Integration | ⚠️ | Read + quick-add only |
+| Finance (Plaid) | ⚠️ | Read-only |
+| Outlook/Slack/Notion | ❌ | Empty directories |
+| MCP Client | ✅ | Ready, no servers |
+| MCP Servers | ❌ | Need to build |
+| Mesh/A2A Networking | 🔌 | Fully coded, not wired up |
+| Discovery System | ✅ | Full capability matching |
+| Learning System | ⚠️ | Collects signals, no inference |
+| Proactive System | ⚠️ | Scaffolding only |
+| Web UI | ⚠️ | Functional but dated design |
+| Autonomy Modes | ❌ | Stored but not enforced |
 
 ---
 
@@ -1076,6 +1108,237 @@ CREATE TABLE chain_executions (
 
 ---
 
+## MCP Architecture (`internal/mcp/`) ❌ Servers Needed
+
+Model Context Protocol (MCP) is the AI-native way to connect external services. The client exists, but servers need to be built.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     MCP ARCHITECTURE                             │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                      MCP CLIENT ✅                           ││
+│  │  • JSON-RPC 2.0 over HTTP                                   ││
+│  │  • Multi-server support                                      ││
+│  │  • Tool discovery and execution                              ││
+│  │  • Resource reading                                          ││
+│  └─────────────────────────────────────────────────────────────┘│
+│                              │                                   │
+│          ┌───────────────────┼───────────────────┐              │
+│          │                   │                   │              │
+│          ▼                   ▼                   ▼              │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐        │
+│  │  Gmail MCP   │   │ Calendar MCP │   │  Slack MCP   │        │
+│  │   Server ❌  │   │  Server ❌   │   │  Server ❌   │        │
+│  └──────────────┘   └──────────────┘   └──────────────┘        │
+│                                                                  │
+│  Planned MCP Servers:                                           │
+│  • gmail - send, reply, archive, label                         │
+│  • calendar - create, schedule, find_free_time                 │
+│  • finance - transactions, insights, budgets                   │
+│  • slack - message, react, search                              │
+│  • notion - pages, databases, search                           │
+│  • github - issues, PRs, notifications                         │
+│  • outlook - mirror gmail functionality                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### MCP Client (internal/mcp/client.go) ✅
+
+```go
+type Client struct {
+    httpClient *http.Client
+    servers    map[string]*Server
+}
+
+// Core operations
+func (c *Client) RegisterServer(server *Server) error
+func (c *Client) Connect(ctx context.Context, serverID string) error
+func (c *Client) ListTools(ctx context.Context, serverID string) ([]Tool, error)
+func (c *Client) CallTool(ctx context.Context, serverID string, req ToolCallRequest) (*ToolCallResponse, error)
+func (c *Client) ListResources(ctx context.Context, serverID string) ([]Resource, error)
+func (c *Client) ReadResource(ctx context.Context, serverID, uri string) (*ResourceContent, error)
+```
+
+### MCP Server Pattern (To Be Built) ❌
+
+```go
+// Each external service will have an MCP server:
+type GmailMCPServer struct {
+    oauth  *oauth2.Config
+    token  *oauth2.Token
+    client *gmail.Service
+}
+
+// Tools exposed by Gmail MCP:
+// • gmail.list_messages - List with query
+// • gmail.get_message - Get full content
+// • gmail.send_message - Compose and send
+// • gmail.reply - Reply to thread
+// • gmail.archive - Archive message
+// • gmail.label - Add/remove labels
+```
+
+---
+
+## Agent Mesh / A2A Networking (`internal/mesh/`) 🔌 Code Ready
+
+The mesh system enables your Digital Twin to communicate with other agents (family, team, services). **All code is fully implemented and tested, but not wired into main.go.**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      MESH NETWORKING                             │
+│                    (Production Ready, Not Activated)             │
+│                                                                  │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
+│  │ Agent Card   │    │  Encrypted   │    │  Mesh Hub    │       │
+│  │ (Identity)   │    │  Channels    │    │ (WebSocket)  │       │
+│  │      ✅      │    │      ✅      │    │      ✅      │       │
+│  │              │    │              │    │              │       │
+│  │ • Ed25519    │    │ • X25519     │    │ • Peer mgmt  │       │
+│  │ • Signing    │    │ • AES-256    │    │ • Routing    │       │
+│  │ • Relations  │    │ • Handshake  │    │ • Broadcast  │       │
+│  │ • Permissions│    │ • Nonces     │    │ • Cleanup    │       │
+│  └──────────────┘    └──────────────┘    └──────────────┘       │
+│         │                   │                   │                │
+│         └───────────────────┴───────────────────┘                │
+│                             │                                    │
+│                    ┌────────▼────────┐                          │
+│                    │   Negotiation   │                          │
+│                    │     Engine ✅   │                          │
+│                    │                 │                          │
+│                    │ • Schedule      │  ← Family coordination   │
+│                    │ • Tasks         │  ← Task delegation       │
+│                    │ • Permissions   │  ← Access control        │
+│                    │ • Resources     │  ← Shared resources      │
+│                    └─────────────────┘                          │
+│                                                                  │
+│  Files:                                                          │
+│  • internal/mesh/hub.go         - WebSocket server               │
+│  • internal/mesh/channel.go     - Encrypted channels             │
+│  • internal/mesh/agent_card.go  - Agent identity                 │
+│  • internal/mesh/negotiation.go - Multi-agent negotiation        │
+│                                                                  │
+│  All tests passing in test/week4_test.go                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Agent Card (internal/mesh/agent_card.go) ✅
+
+```go
+type AgentCard struct {
+    ID           string
+    Name         string
+    PublicKey    ed25519.PublicKey  // For signatures
+    EndpointURL  string             // WebSocket URL
+    Capabilities []Capability       // What agent can do
+    Relationships []Relationship    // Family, team connections
+}
+
+type Relationship struct {
+    AgentID     string
+    Type        RelationshipType  // Spouse, Parent, Child, Friend, Team
+    Permissions []Permission      // View, Suggest, Modify, Full
+}
+```
+
+### Encrypted Channels (internal/mesh/channel.go) ✅
+
+```go
+// X25519 + AES-256-GCM encrypted channels
+type SecureChannel struct {
+    localPrivate  *ecdh.PrivateKey
+    remotePublic  *ecdh.PublicKey
+    sharedSecret  []byte
+    cipher        cipher.AEAD  // AES-256-GCM
+}
+
+func (c *SecureChannel) CreateMessage(msgType MessageType, payload interface{}) (*Message, error)
+func (c *SecureChannel) DecryptMessage(msg *Message) (interface{}, error)
+```
+
+### Mesh Hub (internal/mesh/hub.go) ✅
+
+```go
+type Hub struct {
+    server   *http.Server
+    peers    map[string]*Peer
+    channels *ChannelManager
+
+    // Callbacks
+    OnConnect    func(peer *Peer)
+    OnDisconnect func(peer *Peer)
+    OnMessage    func(peer *Peer, msg *Message)
+}
+
+func (h *Hub) Start(addr string) error
+func (h *Hub) Connect(ctx context.Context, peerURL string) (*Peer, error)
+func (h *Hub) Send(peerID string, msg *Message) error
+func (h *Hub) Broadcast(msg *Message) error
+```
+
+### Negotiation Engine (internal/mesh/negotiation.go) ✅
+
+```go
+// Multi-agent negotiation for scheduling, tasks, permissions
+type Negotiator struct {
+    negotiations map[string]*Negotiation
+}
+
+type Negotiation struct {
+    ID          string
+    Type        NegotiationType  // Schedule, Task, Permission, Resource
+    Initiator   string
+    Participants []string
+    Proposals   []Proposal
+    Status      NegotiationStatus
+}
+
+// Family-specific shared context
+type SharedContext struct {
+    FamilyCalendar []SharedEvent
+    KidSchedules   []KidSchedule
+    Tasks          []SharedTask
+    Reminders      []SharedReminder
+}
+```
+
+### Example: Family Coordination
+
+```
+Your Twin ←──encrypted──→ Spouse's Twin
+    │                          │
+    │ "Meeting 3-5pm today"   │
+    │ ─────────────────────────►
+    │                          │
+    │ "Can you pick up kids?" │
+    │ ◄─────────────────────────
+    │                          │
+    │ [Negotiation Protocol]   │
+    │ • Check your calendar    │
+    │ • Propose alternatives   │
+    │ • Resolve automatically  │
+    │                          │
+```
+
+### To Activate Mesh
+
+```go
+// Add to cmd/quantumlife/main.go:
+meshHub := mesh.NewHub(mesh.HubConfig{
+    Address: ":9000",
+    AgentCard: myAgentCard,
+})
+go meshHub.Start()
+
+// Add API endpoints for:
+// POST /api/v1/mesh/connect    - Connect to peer
+// GET  /api/v1/mesh/peers      - List connected peers
+// POST /api/v1/mesh/negotiate  - Start negotiation
+```
+
+---
+
 ## Web UI (`internal/api/static/`)
 
 Single-page React application with real-time WebSocket updates.
@@ -1140,6 +1403,150 @@ The UI subscribes to real-time events:
 | Database Migrations | 11 |
 | Tests | 77+ |
 | Capability Types | 30+ |
+
+---
+
+---
+
+## Implementation Roadmap
+
+### Phase 1: MCP Foundation (Current Priority)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PHASE 1: MCP SERVERS                          │
+│                                                                  │
+│  1.1 MCP Server Framework                                        │
+│      └── internal/mcp/server/server.go                          │
+│      └── internal/mcp/server/handler.go                         │
+│      └── internal/mcp/server/registry.go                        │
+│                                                                  │
+│  1.2 Gmail MCP Server (rewrite from OAuth)                      │
+│      └── internal/mcp/servers/gmail/server.go                   │
+│      └── Tools: list, get, send, reply, archive, label          │
+│                                                                  │
+│  1.3 Calendar MCP Server (rewrite from OAuth)                   │
+│      └── internal/mcp/servers/calendar/server.go                │
+│      └── Tools: list, create, quick_add, find_free, delete      │
+│                                                                  │
+│  1.4 Finance MCP Server (rewrite from Plaid)                    │
+│      └── internal/mcp/servers/finance/server.go                 │
+│      └── Tools: accounts, transactions, insights, categorize    │
+│                                                                  │
+│  1.5 Wire MCP to Discovery                                      │
+│      └── internal/discovery/mcp_handler.go                      │
+│      └── Update cmd/quantumlife/main.go                         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Phase 2: New Integrations
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 PHASE 2: NEW MCP SERVERS                         │
+│                                                                  │
+│  2.1 Slack MCP Server                                           │
+│      └── channels, messages, reactions, search                  │
+│                                                                  │
+│  2.2 Notion MCP Server                                          │
+│      └── pages, databases, search, blocks                       │
+│                                                                  │
+│  2.3 GitHub MCP Server                                          │
+│      └── repos, issues, PRs, notifications                      │
+│                                                                  │
+│  2.4 Outlook MCP Server                                         │
+│      └── mirror Gmail tools for Microsoft Graph                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Phase 3: Mesh Activation
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              PHASE 3: A2A MESH ACTIVATION                        │
+│              (Code exists, just wire up)                         │
+│                                                                  │
+│  3.1 Initialize Mesh Hub in main.go                             │
+│                                                                  │
+│  3.2 Add Mesh API endpoints                                     │
+│      └── POST /api/v1/mesh/connect                              │
+│      └── GET  /api/v1/mesh/peers                                │
+│      └── POST /api/v1/mesh/negotiate                            │
+│      └── GET  /api/v1/mesh/status                               │
+│                                                                  │
+│  3.3 Connect Discovery to Mesh                                  │
+│      └── Remote agent discovery                                 │
+│      └── Cross-agent capability matching                        │
+│                                                                  │
+│  3.4 Family coordination features                               │
+│      └── Shared calendar                                        │
+│      └── Task delegation                                        │
+│      └── Kid schedule sync                                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Phase 4: UI Modernization
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                PHASE 4: UI MODERNIZATION                         │
+│                                                                  │
+│  4.1 Port Landing Page Design System                            │
+│      └── Dark theme with glassmorphism                          │
+│      └── Gradient text and buttons                              │
+│      └── Glow effects                                           │
+│      └── Smooth animations                                       │
+│                                                                  │
+│  4.2 Component Redesign                                         │
+│      └── Sidebar → glass-dark                                   │
+│      └── Cards → glass + hover effects                          │
+│      └── Buttons → gradient-btn + glow                          │
+│      └── Progress → gradient fills                              │
+│                                                                  │
+│  4.3 Theme Toggle (dark/light)                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Phase 5: Intelligence Layer
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              PHASE 5: PROACTIVE INTELLIGENCE                     │
+│                                                                  │
+│  5.1 Learning System                                            │
+│      └── Pattern inference from signals                         │
+│      └── User preference modeling                               │
+│      └── Time-based pattern detection                           │
+│                                                                  │
+│  5.2 Recommendation Engine                                      │
+│      └── Real recommendations (not scaffolding)                 │
+│      └── Calendar conflict detection                            │
+│      └── Email response suggestions                             │
+│      └── Spending anomaly alerts                                │
+│                                                                  │
+│  5.3 Autonomy Mode Enforcement                                  │
+│      └── Suggest mode: notify only                              │
+│      └── Supervised mode: ask approval                          │
+│      └── Autonomous mode: act with confidence threshold         │
+│                                                                  │
+│  5.4 Trigger System                                             │
+│      └── Time-based (morning briefing)                          │
+│      └── Event-based (new urgent email)                         │
+│      └── Pattern-based (response overdue)                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Success Criteria
+
+When all phases complete, the Digital Twin will:
+
+- [ ] **Read** your Gmail, Calendar, Finance, Slack, Notion, GitHub
+- [ ] **Act** by sending emails, scheduling meetings, responding
+- [ ] **Learn** your patterns (response times, priorities, habits)
+- [ ] **Anticipate** with proactive recommendations
+- [ ] **Coordinate** with family/team via encrypted mesh
+- [ ] **Respect** your autonomy mode preferences
+- [ ] **Look** modern with the landing page design
 
 ---
 

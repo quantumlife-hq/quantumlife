@@ -4,8 +4,46 @@
 
 QuantumLife is an autonomous AI agent that learns your patterns, manages your digital life across multiple domains, and acts on your behalf. Built with privacy-first principles using post-quantum cryptography and local-first data storage.
 
-[![Go Version](https://img.shields.io/badge/Go-1.23-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.24-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Alpha-orange.svg)]()
+
+## Current Status: Alpha (v0.5)
+
+> **Honest Assessment**: QuantumLife is ~45% complete. Core infrastructure is solid, but many features shown on the landing page are scaffolding that needs implementation. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed status.
+
+| Component | Status |
+|-----------|--------|
+| Identity & Crypto | ✅ Complete |
+| Storage & Database | ✅ Complete |
+| 12 Semantic Hats | ✅ Complete |
+| Memory System | ⚠️ Basic (needs vectors) |
+| Agent Core | ⚠️ Chat works, actions limited |
+| Gmail Integration | ⚠️ Read-only (OAuth works) |
+| Calendar Integration | ⚠️ Read-only |
+| Banking (Plaid) | ⚠️ Scaffolding |
+| Learning System | ⚠️ Scaffolding |
+| Proactive Engine | ⚠️ Scaffolding |
+| MCP Protocol | 🔌 Client ready, no servers |
+| Agent Mesh (A2A) | ✅ Implemented, not wired |
+| Web UI | ⚠️ Functional, needs design |
+
+**Legend**: ✅ Complete | ⚠️ Partial/Scaffolding | 🔌 Ready but not connected
+
+---
+
+## The 6 Pillars
+
+| | Pillar | Description | Status |
+|--|--------|-------------|--------|
+| 🧠 | **Learns You** | TikTok-style behavioral learning. No forms. It watches and learns your patterns. | ⚠️ Scaffolding |
+| 🎯 | **Acts For You** | 3 modes: Suggest, Supervised, Autonomous. You control how much it does. | ⚠️ Settings stored, not enforced |
+| 🔮 | **Anticipates** | Proactive, not reactive. Reminds before you forget. Prepares before you ask. | ⚠️ Framework only |
+| 🎭 | **12 Life Hats** | Parent, Professional, Partner, Health, Finance... Different contexts, one system. | ✅ Complete |
+| 🔐 | **Your Data** | Runs locally. Post-quantum encryption. You own it. Nobody else sees it. | ✅ Complete |
+| 🤝 | **Agent Mesh** | Your agent talks to other agents. Coordinate with family and team effortlessly. | ✅ Code complete, not wired |
+
+---
 
 ## Overview
 
@@ -38,30 +76,41 @@ QuantumLife organizes your life into **12 semantic "Hats"** - distinct roles you
 
 ## Key Features
 
-### Privacy-First Architecture
+### Privacy-First Architecture ✅
 - **Post-Quantum Cryptography** - Ed25519 + ML-DSA-65 + ML-KEM-768 for future-proof security
 - **Local-First Storage** - All data encrypted on your device with SQLite
 - **Passphrase Protection** - Argon2id + XChaCha20-Poly1305 key encryption
 
-### Intelligent Life Organization
-- **12 Semantic Hats** - Automatic classification of emails, events, and tasks into life domains
-- **Behavioral Learning** - TikTok-style implicit learning from your actions
-- **Pattern Detection** - Discovers your habits, preferences, and routines
+### Intelligent Life Organization ✅
+- **12 Semantic Hats** - Classification of emails, events, and tasks into life domains
+- **Hat Management** - Full CRUD operations with priority and color coding
 
-### Proactive Assistance
-- **Smart Recommendations** - Suggests actions based on context and patterns
-- **Nudge System** - Timely reminders with configurable urgency levels
-- **Autonomous Actions** - Three modes: Suggest, Supervised, or Autonomous
+### Data Integrations ⚠️
+- **Gmail** - OAuth flow works, read messages (actions planned via MCP)
+- **Google Calendar** - OAuth flow works, read events (actions planned via MCP)
+- **Plaid Banking** - Scaffolding in place (needs implementation)
+- **Planned**: Slack, Notion, GitHub, Outlook via MCP servers
 
-### Data Integrations
-- **Gmail** - Full sync with thread support and actions (archive, star, delete)
-- **Google Calendar** - Event sync, quick add, availability checking
-- **Plaid Banking** - Account balances, transactions, spending insights
+### Agent Capabilities ⚠️
+- **Chat Interface** - Talk to your agent via web or CLI
+- **Discovery System** - Intent-based capability matching (scaffolding)
+- **MCP Client** - Ready to connect to MCP servers (none registered yet)
 
-### Agent Capabilities
-- **MCP-Style Discovery** - Register and discover agent capabilities
-- **Intent-Based Execution** - Natural language to action mapping
-- **Execution Chaining** - Multi-step automated workflows
+### Agent Mesh / A2A Networking ✅ (Not Wired)
+- **Peer Discovery** - WebSocket-based hub for agent registration
+- **Encrypted Channels** - X25519 + AES-256-GCM for secure agent-to-agent comms
+- **Agent Cards** - Ed25519 signed identity with capabilities
+- **Negotiation Engine** - Multi-agent coordination protocols
+
+### Behavioral Learning ⚠️ (Scaffolding)
+- **Signal Collection** - Tracks clicks, views, time spent
+- **Pattern Detection** - Structure exists, inference TBD
+- **Recommendations** - Framework ready, needs real data flow
+
+### Proactive System ⚠️ (Scaffolding)
+- **Trigger Detection** - Time-based trigger framework
+- **Nudge System** - Notification structure in place
+- **Autonomy Modes** - Settings stored but not enforced
 
 ## Quick Start
 
@@ -177,30 +226,35 @@ quantumlife/
 │   └── quantumlife/     # Server application
 ├── internal/
 │   ├── core/            # Core types (You, Hat, Item, Space)
-│   ├── agent/           # Autonomous AI agent
-│   ├── learning/        # Behavioral pattern learning
-│   ├── proactive/       # Recommendations & nudges
-│   ├── discovery/       # Agent capability discovery
-│   ├── storage/         # SQLite database layer
-│   ├── identity/        # Post-quantum cryptography
+│   ├── agent/           # Autonomous AI agent ⚠️
+│   ├── learning/        # Behavioral pattern learning ⚠️
+│   ├── proactive/       # Recommendations & nudges ⚠️
+│   ├── discovery/       # Agent capability discovery ⚠️
+│   ├── storage/         # SQLite database layer ✅
+│   ├── identity/        # Post-quantum cryptography ✅
 │   ├── spaces/          # Data source connectors
-│   │   ├── gmail/       # Gmail integration
-│   │   └── calendar/    # Google Calendar
-│   ├── finance/         # Plaid banking integration
-│   ├── llm/             # LLM routing (Claude, Ollama, Azure)
-│   ├── vectors/         # Qdrant vector database
-│   ├── memory/          # Memory management
-│   ├── mesh/            # Agent-to-agent networking
-│   ├── actions/         # 3-mode action framework
-│   ├── triage/          # Item classification
-│   ├── briefing/        # Daily briefing generation
-│   ├── scheduler/       # Task scheduling
-│   └── api/             # HTTP API & WebSocket
-├── migrations/          # Database migrations (11 files)
+│   │   ├── gmail/       # Gmail integration ⚠️
+│   │   └── calendar/    # Google Calendar ⚠️
+│   ├── finance/         # Plaid banking integration ⚠️
+│   ├── llm/             # LLM routing (Claude, Ollama, Azure) ✅
+│   ├── vectors/         # Qdrant vector database ⚠️
+│   ├── memory/          # Memory management ⚠️
+│   ├── mesh/            # Agent-to-agent networking ✅
+│   ├── mcp/             # MCP client (servers TBD) 🔌
+│   ├── actions/         # 3-mode action framework ⚠️
+│   ├── triage/          # Item classification ⚠️
+│   ├── briefing/        # Daily briefing generation ⚠️
+│   ├── scheduler/       # Task scheduling ⚠️
+│   ├── notifications/   # Notification system ⚠️
+│   └── api/             # HTTP API & WebSocket ✅
+├── migrations/          # Database migrations (12 files)
 ├── scripts/             # Deployment scripts
 ├── test/                # Integration tests
+├── web/                 # Landing page ✅
 └── docs/                # Documentation
 ```
+
+**Status**: ✅ Complete | ⚠️ Scaffolding | 🔌 Ready but not connected
 
 ## API
 
@@ -322,11 +376,12 @@ All keys are encrypted with your passphrase and stored locally.
 
 ## Project Stats
 
-- **Lines of Code**: ~32,000+
-- **Packages**: 28
-- **API Endpoints**: 40+
-- **Database Migrations**: 11
-- **Tests**: 77+
+- **Lines of Code**: ~35,000+
+- **Packages**: 30+
+- **API Endpoints**: 45+
+- **Database Migrations**: 12
+- **Tests**: 80+
+- **Completion**: ~45%
 
 ## Development
 
@@ -349,28 +404,57 @@ docker build -t quantumlife .
 
 ## Documentation
 
-- [Architecture Guide](docs/ARCHITECTURE.md) - System design and components
+- [Architecture Guide](docs/ARCHITECTURE.md) - System design, status, and 5-phase roadmap
 - [API Reference](docs/API.md) - Complete REST API documentation
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute
 
+**Note**: ARCHITECTURE.md is the single source of truth for project status and roadmap.
+
 ## Roadmap
 
+### Completed ✅
 - [x] Identity & Post-Quantum Crypto
-- [x] 12 Semantic Hats
-- [x] Memory System (Episodic, Semantic, Procedural)
-- [x] Agent Core (Classify, Learn, Act)
-- [x] Gmail Integration
-- [x] Google Calendar Integration
-- [x] Plaid Banking Integration
-- [x] Behavioral Learning System
-- [x] Proactive Recommendations
-- [x] Agent Discovery & Execution
-- [x] Web Dashboard
-- [ ] Outlook/Microsoft 365 integration
-- [ ] Google Drive file sync
-- [ ] Mobile app (iOS/Android)
-- [ ] Voice interface
-- [ ] Full family mesh networking
+- [x] 12 Semantic Hats with CRUD
+- [x] SQLite Storage Layer (11 migrations)
+- [x] Agent Mesh / A2A Networking (code complete)
+- [x] Web Dashboard (functional)
+- [x] Landing Page
+
+### In Progress ⚠️
+- [ ] Gmail Integration (OAuth ✅, actions via MCP)
+- [ ] Google Calendar (OAuth ✅, actions via MCP)
+- [ ] Memory System (basic storage ✅, vectors TBD)
+- [ ] Agent Core (chat ✅, autonomous actions TBD)
+
+### Planned (MCP-First Approach)
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full 5-phase roadmap.
+
+**Phase 1: MCP Foundation**
+- [ ] MCP Server Framework
+- [ ] Gmail MCP Server (full rewrite)
+- [ ] Calendar MCP Server (full rewrite)
+- [ ] Finance MCP Server
+
+**Phase 2: New Integrations**
+- [ ] Slack MCP Server
+- [ ] Notion MCP Server
+- [ ] GitHub MCP Server
+- [ ] Outlook MCP Server
+
+**Phase 3: Mesh Activation**
+- [ ] Wire mesh to main.go
+- [ ] API endpoints for mesh
+- [ ] Family agent coordination
+
+**Phase 4: UI Modernization**
+- [ ] Port landing page design to app
+- [ ] Dark theme + glassmorphism
+- [ ] Theme toggle
+
+**Phase 5: Intelligence Layer**
+- [ ] Real pattern inference
+- [ ] Working recommendations
+- [ ] Autonomy mode enforcement
 
 ## Contributing
 
