@@ -405,10 +405,11 @@ docker build -t quantumlife .
 ## Documentation
 
 - [Architecture Guide](docs/ARCHITECTURE.md) - System design, status, and 5-phase roadmap
+- [Progress Tracker](PROGRESS.md) - Detailed implementation checklist (survives across sessions)
 - [API Reference](docs/API.md) - Complete REST API documentation
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute
 
-**Note**: ARCHITECTURE.md is the single source of truth for project status and roadmap.
+**Note**: `PROGRESS.md` tracks implementation progress. `ARCHITECTURE.md` has technical design.
 
 ## Roadmap
 

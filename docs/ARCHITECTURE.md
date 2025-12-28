@@ -2,6 +2,8 @@
 
 **Technical Deep Dive | Last Updated: December 2025**
 
+> **Progress Tracking**: See [PROGRESS.md](../PROGRESS.md) for detailed implementation checklist and session log.
+
 ---
 
 ## Implementation Status Legend
