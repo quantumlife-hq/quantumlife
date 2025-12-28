@@ -12,6 +12,13 @@ import (
 	"github.com/quantumlife/quantumlife/internal/mcp/server"
 )
 
+// GitHubAPI defines the interface for GitHub API operations
+type GitHubAPI interface {
+	Get(ctx context.Context, path string) (interface{}, error)
+	GetMap(ctx context.Context, path string) (map[string]interface{}, error)
+	Post(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error)
+}
+
 // Client is a GitHub API client
 type Client struct {
 	token      string
@@ -31,11 +38,20 @@ func NewClient(token string) *Client {
 // Server wraps the MCP server with GitHub functionality
 type Server struct {
 	*server.Server
-	client *Client
+	client GitHubAPI
 }
 
 // New creates a new GitHub MCP server
 func New(client *Client) *Server {
+	return newServer(client)
+}
+
+// NewWithMockClient creates a GitHub MCP server with a mock client for testing
+func NewWithMockClient(client GitHubAPI) *Server {
+	return newServer(client)
+}
+
+func newServer(client GitHubAPI) *Server {
 	s := &Server{
 		Server: server.New(server.Config{Name: "github", Version: "1.0.0"}),
 		client: client,
@@ -199,7 +215,7 @@ func (s *Server) handleListRepos(ctx context.Context, raw json.RawMessage) (*ser
 	sort := args.StringDefault("sort", "updated")
 	limit := args.IntDefault("limit", 30)
 
-	resp, err := s.client.get(ctx, fmt.Sprintf("/user/repos?type=%s&sort=%s&per_page=%d", repoType, sort, limit))
+	resp, err := s.client.Get(ctx, fmt.Sprintf("/user/repos?type=%s&sort=%s&per_page=%d", repoType, sort, limit))
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to list repos: %v", err)), nil
 	}
@@ -243,7 +259,7 @@ func (s *Server) handleGetRepo(ctx context.Context, raw json.RawMessage) (*serve
 		return server.ErrorResult(err.Error()), nil
 	}
 
-	resp, err := s.client.getMap(ctx, fmt.Sprintf("/repos/%s/%s", owner, repo))
+	resp, err := s.client.GetMap(ctx, fmt.Sprintf("/repos/%s/%s", owner, repo))
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get repo: %v", err)), nil
 	}
@@ -287,7 +303,7 @@ func (s *Server) handleListIssues(ctx context.Context, raw json.RawMessage) (*se
 		url += "&labels=" + labels
 	}
 
-	resp, err := s.client.get(ctx, url)
+	resp, err := s.client.Get(ctx, url)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to list issues: %v", err)), nil
 	}
@@ -338,7 +354,7 @@ func (s *Server) handleGetIssue(ctx context.Context, raw json.RawMessage) (*serv
 		return server.ErrorResult(err.Error()), nil
 	}
 
-	resp, err := s.client.getMap(ctx, fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, number))
+	resp, err := s.client.GetMap(ctx, fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, number))
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get issue: %v", err)), nil
 	}
@@ -399,7 +415,7 @@ func (s *Server) handleCreateIssue(ctx context.Context, raw json.RawMessage) (*s
 		data["labels"] = splitAndTrim(labels)
 	}
 
-	resp, err := s.client.post(ctx, fmt.Sprintf("/repos/%s/%s/issues", owner, repo), data)
+	resp, err := s.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/issues", owner, repo), data)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to create issue: %v", err)), nil
 	}
@@ -425,7 +441,7 @@ func (s *Server) handleListPRs(ctx context.Context, raw json.RawMessage) (*serve
 	state := args.StringDefault("state", "open")
 	limit := args.IntDefault("limit", 30)
 
-	resp, err := s.client.get(ctx, fmt.Sprintf("/repos/%s/%s/pulls?state=%s&per_page=%d", owner, repo, state, limit))
+	resp, err := s.client.Get(ctx, fmt.Sprintf("/repos/%s/%s/pulls?state=%s&per_page=%d", owner, repo, state, limit))
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to list PRs: %v", err)), nil
 	}
@@ -475,7 +491,7 @@ func (s *Server) handleGetPR(ctx context.Context, raw json.RawMessage) (*server.
 		return server.ErrorResult(err.Error()), nil
 	}
 
-	resp, err := s.client.getMap(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, number))
+	resp, err := s.client.GetMap(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, number))
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get PR: %v", err)), nil
 	}
@@ -516,7 +532,7 @@ func (s *Server) handleGetNotifications(ctx context.Context, raw json.RawMessage
 		url += "&all=true"
 	}
 
-	resp, err := s.client.get(ctx, url)
+	resp, err := s.client.Get(ctx, url)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get notifications: %v", err)), nil
 	}
@@ -559,7 +575,7 @@ func (s *Server) handleGetUser(ctx context.Context, raw json.RawMessage) (*serve
 		url = "/users/" + username
 	}
 
-	resp, err := s.client.getMap(ctx, url)
+	resp, err := s.client.GetMap(ctx, url)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get user: %v", err)), nil
 	}
@@ -595,7 +611,7 @@ func (s *Server) handleSearchRepos(ctx context.Context, raw json.RawMessage) (*s
 		url += "&sort=" + sort
 	}
 
-	resp, err := s.client.getMap(ctx, url)
+	resp, err := s.client.GetMap(ctx, url)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to search: %v", err)), nil
 	}
@@ -637,7 +653,7 @@ func (s *Server) handleSearchIssues(ctx context.Context, raw json.RawMessage) (*
 		url += "&sort=" + sort
 	}
 
-	resp, err := s.client.getMap(ctx, url)
+	resp, err := s.client.GetMap(ctx, url)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to search: %v", err)), nil
 	}
@@ -681,7 +697,7 @@ func (s *Server) handleGetContents(ctx context.Context, raw json.RawMessage) (*s
 		url += "?ref=" + ref
 	}
 
-	resp, err := s.client.get(ctx, url)
+	resp, err := s.client.Get(ctx, url)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get contents: %v", err)), nil
 	}
@@ -744,7 +760,7 @@ func (s *Server) handleAddComment(ctx context.Context, raw json.RawMessage) (*se
 		"body": body,
 	}
 
-	resp, err := s.client.post(ctx, fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, number), data)
+	resp, err := s.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, number), data)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to add comment: %v", err)), nil
 	}
@@ -758,7 +774,8 @@ func (s *Server) handleAddComment(ctx context.Context, raw json.RawMessage) (*se
 
 // HTTP helper methods
 
-func (c *Client) get(ctx context.Context, path string) (interface{}, error) {
+// Get implements GitHubAPI.Get
+func (c *Client) Get(ctx context.Context, path string) (interface{}, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+path, nil)
 	if err != nil {
 		return nil, err
@@ -766,8 +783,9 @@ func (c *Client) get(ctx context.Context, path string) (interface{}, error) {
 	return c.doRequest(req)
 }
 
-func (c *Client) getMap(ctx context.Context, path string) (map[string]interface{}, error) {
-	resp, err := c.get(ctx, path)
+// GetMap implements GitHubAPI.GetMap
+func (c *Client) GetMap(ctx context.Context, path string) (map[string]interface{}, error) {
+	resp, err := c.Get(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -777,7 +795,8 @@ func (c *Client) getMap(ctx context.Context, path string) (map[string]interface{
 	return nil, fmt.Errorf("unexpected response type")
 }
 
-func (c *Client) post(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error) {
+// Post implements GitHubAPI.Post
+func (c *Client) Post(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error) {
 	body, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
