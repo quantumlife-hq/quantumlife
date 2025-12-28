@@ -9,16 +9,48 @@ import (
 
 	"github.com/quantumlife/quantumlife/internal/finance"
 	"github.com/quantumlife/quantumlife/internal/mcp/server"
+	"github.com/quantumlife/quantumlife/internal/spaces"
 )
+
+// FinanceSpace defines the interface for finance operations used by the server.
+// This interface allows for mocking in unit tests.
+type FinanceSpace interface {
+	IsConnected() bool
+	GetAccounts() []finance.Account
+	GetTotalBalance() float64
+	GetNetWorth() (assets, liabilities, netWorth float64)
+	GetTransactions(filter finance.TransactionFilter) []*finance.CategorizedTransaction
+	GetSpendingSummary(period string) *finance.SpendingSummary
+	GetRecurringTransactions() []*finance.RecurringTransaction
+	GetInsights() []*finance.Insight
+	GetConnections() []*finance.Connection
+	SetBudget(category finance.Category, amount float64)
+	GetBudgets() map[finance.Category]float64
+	CreateLinkToken(ctx context.Context, userID string) (string, error)
+	GetSyncStatus() spaces.SyncStatus
+}
 
 // Server wraps the MCP server with finance functionality
 type Server struct {
 	*server.Server
-	space *finance.Space
+	space FinanceSpace
 }
 
 // New creates a new Finance MCP server
 func New(space *finance.Space) *Server {
+	if space == nil {
+		return newServer(nil)
+	}
+	return newServer(space)
+}
+
+// NewWithMockSpace creates a new Finance MCP server with a mock space for testing.
+func NewWithMockSpace(space FinanceSpace) *Server {
+	return newServer(space)
+}
+
+// newServer creates a new Finance MCP server with the given space.
+func newServer(space FinanceSpace) *Server {
 	s := &Server{
 		Server: server.New(server.Config{Name: "finance", Version: "1.0.0"}),
 		space:  space,
