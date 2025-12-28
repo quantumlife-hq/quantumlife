@@ -13,6 +13,13 @@ import (
 	"github.com/quantumlife/quantumlife/internal/mcp/server"
 )
 
+// NotionAPI defines the interface for Notion API operations
+type NotionAPI interface {
+	Get(ctx context.Context, path string) (map[string]interface{}, error)
+	Post(ctx context.Context, path string, body map[string]interface{}) (map[string]interface{}, error)
+	Patch(ctx context.Context, path string, body map[string]interface{}) (map[string]interface{}, error)
+}
+
 // Client is a Notion API client
 type Client struct {
 	token      string
@@ -34,11 +41,20 @@ func NewClient(token string) *Client {
 // Server wraps the MCP server with Notion functionality
 type Server struct {
 	*server.Server
-	client *Client
+	client NotionAPI
 }
 
 // New creates a new Notion MCP server
 func New(client *Client) *Server {
+	return newServer(client)
+}
+
+// NewWithMockClient creates a Notion MCP server with a mock client for testing
+func NewWithMockClient(client NotionAPI) *Server {
+	return newServer(client)
+}
+
+func newServer(client NotionAPI) *Server {
 	s := &Server{
 		Server: server.New(server.Config{Name: "notion", Version: "1.0.0"}),
 		client: client,
@@ -172,7 +188,7 @@ func (s *Server) handleSearch(ctx context.Context, raw json.RawMessage) (*server
 		}
 	}
 
-	resp, err := s.client.post(ctx, "/search", body)
+	resp, err := s.client.Post(ctx, "/search", body)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Search failed: %v", err)), nil
 	}
@@ -222,7 +238,7 @@ func (s *Server) handleGetPage(ctx context.Context, raw json.RawMessage) (*serve
 		return server.ErrorResult(err.Error()), nil
 	}
 
-	resp, err := s.client.get(ctx, "/pages/"+pageID)
+	resp, err := s.client.Get(ctx, "/pages/"+pageID)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get page: %v", err)), nil
 	}
@@ -250,7 +266,7 @@ func (s *Server) handleGetContent(ctx context.Context, raw json.RawMessage) (*se
 	}
 	limit := args.IntDefault("limit", 50)
 
-	resp, err := s.client.get(ctx, fmt.Sprintf("/blocks/%s/children?page_size=%d", pageID, limit))
+	resp, err := s.client.Get(ctx, fmt.Sprintf("/blocks/%s/children?page_size=%d", pageID, limit))
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get content: %v", err)), nil
 	}
@@ -337,7 +353,7 @@ func (s *Server) handleCreatePage(ctx context.Context, raw json.RawMessage) (*se
 		}
 	}
 
-	resp, err := s.client.post(ctx, "/pages", body)
+	resp, err := s.client.Post(ctx, "/pages", body)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to create page: %v", err)), nil
 	}
@@ -383,7 +399,7 @@ func (s *Server) handleUpdatePage(ctx context.Context, raw json.RawMessage) (*se
 		return server.ErrorResult("No updates specified"), nil
 	}
 
-	resp, err := s.client.patch(ctx, "/pages/"+pageID, body)
+	resp, err := s.client.Patch(ctx, "/pages/"+pageID, body)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to update page: %v", err)), nil
 	}
@@ -418,7 +434,7 @@ func (s *Server) handleQueryDatabase(ctx context.Context, raw json.RawMessage) (
 		}
 	}
 
-	resp, err := s.client.post(ctx, "/databases/"+dbID+"/query", body)
+	resp, err := s.client.Post(ctx, "/databases/"+dbID+"/query", body)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to query database: %v", err)), nil
 	}
@@ -466,7 +482,7 @@ func (s *Server) handleListDatabases(ctx context.Context, raw json.RawMessage) (
 		"page_size": limit,
 	}
 
-	resp, err := s.client.post(ctx, "/search", body)
+	resp, err := s.client.Post(ctx, "/search", body)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to list databases: %v", err)), nil
 	}
@@ -504,7 +520,7 @@ func (s *Server) handleGetDatabase(ctx context.Context, raw json.RawMessage) (*s
 		return server.ErrorResult(err.Error()), nil
 	}
 
-	resp, err := s.client.get(ctx, "/databases/"+dbID)
+	resp, err := s.client.Get(ctx, "/databases/"+dbID)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get database: %v", err)), nil
 	}
@@ -561,7 +577,7 @@ func (s *Server) handleAddComment(ctx context.Context, raw json.RawMessage) (*se
 		},
 	}
 
-	resp, err := s.client.post(ctx, "/comments", body)
+	resp, err := s.client.Post(ctx, "/comments", body)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to add comment: %v", err)), nil
 	}
@@ -580,7 +596,7 @@ func (s *Server) handleGetComments(ctx context.Context, raw json.RawMessage) (*s
 		return server.ErrorResult(err.Error()), nil
 	}
 
-	resp, err := s.client.get(ctx, "/comments?block_id="+pageID)
+	resp, err := s.client.Get(ctx, "/comments?block_id="+pageID)
 	if err != nil {
 		return server.ErrorResult(fmt.Sprintf("Failed to get comments: %v", err)), nil
 	}
@@ -607,7 +623,8 @@ func (s *Server) handleGetComments(ctx context.Context, raw json.RawMessage) (*s
 
 // HTTP helper methods
 
-func (c *Client) get(ctx context.Context, path string) (map[string]interface{}, error) {
+// Get implements NotionAPI.Get
+func (c *Client) Get(ctx context.Context, path string) (map[string]interface{}, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+path, nil)
 	if err != nil {
 		return nil, err
@@ -615,7 +632,8 @@ func (c *Client) get(ctx context.Context, path string) (map[string]interface{}, 
 	return c.doRequest(req)
 }
 
-func (c *Client) post(ctx context.Context, path string, body map[string]interface{}) (map[string]interface{}, error) {
+// Post implements NotionAPI.Post
+func (c *Client) Post(ctx context.Context, path string, body map[string]interface{}) (map[string]interface{}, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -628,7 +646,8 @@ func (c *Client) post(ctx context.Context, path string, body map[string]interfac
 	return c.doRequest(req)
 }
 
-func (c *Client) patch(ctx context.Context, path string, body map[string]interface{}) (map[string]interface{}, error) {
+// Patch implements NotionAPI.Patch
+func (c *Client) Patch(ctx context.Context, path string, body map[string]interface{}) (map[string]interface{}, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
