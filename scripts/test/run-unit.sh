@@ -5,8 +5,11 @@ set -e
 
 echo "Running unit tests..."
 go test -v -race -coverprofile=coverage.out \
-    ./internal/mcp/... \
+    ./internal/mcp/server/... \
+    ./internal/mcp/servers/... \
     ./internal/api/... \
+    ./internal/learning/... \
+    ./internal/proactive/... \
     ./test/...
 
 echo ""

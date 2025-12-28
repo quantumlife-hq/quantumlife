@@ -6,36 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  GO_VERSION: '1.22'
+
 jobs:
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-          cache: true
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run unit tests
-        run: |
-          go test -v -race -coverprofile=coverage.out \
-            ./internal/mcp/... \
-            ./internal/api/... \
-            ./test/...
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.out
-          fail_ci_if_error: false
-
+  # Quick checks that run on every PR
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -46,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Run golangci-lint
@@ -65,12 +40,46 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Build
         run: go build -v ./...
 
+  # Unit tests - run on every PR
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run unit tests
+        run: |
+          go test -v -race -coverprofile=coverage.out \
+            ./internal/mcp/server/... \
+            ./internal/mcp/servers/... \
+            ./internal/api/... \
+            ./internal/learning/... \
+            ./internal/proactive/...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.out
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # Contract tests - run on every PR
   contract-tests:
     name: Contract Tests
     runs-on: ubuntu-latest
@@ -81,18 +90,16 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Run contract tests
         run: go test -v ./test/contract/...
 
-  # E2E tests run only on main branch with secrets
-  e2e-tests:
-    name: E2E Tests
+  # Integration tests - run on every PR
+  integration-tests:
+    name: Integration Tests
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [unit-tests, contract-tests, build]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -100,7 +107,26 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run integration tests
+        run: go test -v -tags=integration ./internal/...
+
+  # E2E tests - run only on main branch with secrets
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [unit-tests, contract-tests, integration-tests, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Run E2E tests
@@ -114,3 +140,22 @@ jobs:
           NOTION_TEST_DATABASE: ${{ secrets.E2E_NOTION_TEST_DATABASE }}
         run: |
           go test -v -tags=e2e -timeout=10m ./test/e2e/...
+
+  # Summary job that depends on all test jobs
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [lint, build, unit-tests, contract-tests, integration-tests]
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.build.result }}" != "success" ] || \
+             [ "${{ needs.unit-tests.result }}" != "success" ] || \
+             [ "${{ needs.contract-tests.result }}" != "success" ] || \
+             [ "${{ needs.integration-tests.result }}" != "success" ]; then
+            echo "One or more test jobs failed"
+            exit 1
+          fi
+          echo "All tests passed!"
