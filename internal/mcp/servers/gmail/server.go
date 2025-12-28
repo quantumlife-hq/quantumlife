@@ -8,16 +8,45 @@ import (
 
 	gmailclient "github.com/quantumlife/quantumlife/internal/spaces/gmail"
 	"github.com/quantumlife/quantumlife/internal/mcp/server"
+	"google.golang.org/api/gmail/v1"
 )
+
+// GmailClient defines the interface for Gmail operations used by the server.
+type GmailClient interface {
+	ListMessages(ctx context.Context, query string, maxResults int64) ([]gmailclient.MessageSummary, error)
+	GetMessage(ctx context.Context, messageID string) (*gmailclient.Message, error)
+	SendMessage(ctx context.Context, req gmailclient.SendMessageRequest) (*gmailclient.MessageSummary, error)
+	Reply(ctx context.Context, req gmailclient.ReplyRequest) (*gmailclient.MessageSummary, error)
+	ArchiveMessage(ctx context.Context, messageID string) error
+	TrashMessage(ctx context.Context, messageID string) error
+	StarMessage(ctx context.Context, messageID string) error
+	UnstarMessage(ctx context.Context, messageID string) error
+	MarkAsRead(ctx context.Context, messageID string) error
+	MarkAsUnread(ctx context.Context, messageID string) error
+	AddLabel(ctx context.Context, messageID, labelID string) error
+	RemoveLabel(ctx context.Context, messageID, labelID string) error
+	ListLabels(ctx context.Context) ([]*gmail.Label, error)
+	GetOrCreateLabel(ctx context.Context, name string) (string, error)
+	CreateDraft(ctx context.Context, req gmailclient.CreateDraftRequest) (string, error)
+}
 
 // Server is the Gmail MCP server
 type Server struct {
 	*server.Server
-	client *gmailclient.Client
+	client GmailClient
 }
 
 // New creates a new Gmail MCP server from a Gmail client
 func New(client *gmailclient.Client) *Server {
+	return newServer(client)
+}
+
+// NewWithMockClient creates a new Gmail MCP server with a mock client for testing
+func NewWithMockClient(client GmailClient) *Server {
+	return newServer(client)
+}
+
+func newServer(client GmailClient) *Server {
 	s := &Server{
 		Server: server.New(server.Config{
 			Name:    "gmail",
