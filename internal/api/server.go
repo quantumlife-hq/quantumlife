@@ -17,6 +17,7 @@ import (
 
 	"github.com/quantumlife/quantumlife/internal/agent"
 	"github.com/quantumlife/quantumlife/internal/core"
+	"github.com/quantumlife/quantumlife/internal/discovery"
 	"github.com/quantumlife/quantumlife/internal/learning"
 	"github.com/quantumlife/quantumlife/internal/proactive"
 	"github.com/quantumlife/quantumlife/internal/storage"
@@ -47,6 +48,11 @@ type Server struct {
 	// Proactive
 	proactiveService *proactive.Service
 
+	// Discovery
+	discoveryRegistry  *discovery.Registry
+	discoveryService   *discovery.DiscoveryService
+	executionEngine    *discovery.ExecutionEngine
+
 	// State
 	identity *core.You
 
@@ -55,27 +61,33 @@ type Server struct {
 
 // Config for the server
 type Config struct {
-	Port             int
-	Agent            *agent.Agent
-	DB               *storage.DB
-	Identity         *core.You
-	LearningService  *learning.Service
-	ProactiveService *proactive.Service
+	Port               int
+	Agent              *agent.Agent
+	DB                 *storage.DB
+	Identity           *core.You
+	LearningService    *learning.Service
+	ProactiveService   *proactive.Service
+	DiscoveryRegistry  *discovery.Registry
+	DiscoveryService   *discovery.DiscoveryService
+	ExecutionEngine    *discovery.ExecutionEngine
 }
 
 // New creates a new API server
 func New(cfg Config) *Server {
 	s := &Server{
-		agent:            cfg.Agent,
-		db:               cfg.DB,
-		identity:         cfg.Identity,
-		hatStore:         storage.NewHatStore(cfg.DB),
-		itemStore:        storage.NewItemStore(cfg.DB),
-		spaceStore:       storage.NewSpaceStore(cfg.DB),
-		identityStore:    storage.NewIdentityStore(cfg.DB),
-		learningService:  cfg.LearningService,
-		proactiveService: cfg.ProactiveService,
-		wsHub:            NewWebSocketHub(),
+		agent:              cfg.Agent,
+		db:                 cfg.DB,
+		identity:           cfg.Identity,
+		hatStore:           storage.NewHatStore(cfg.DB),
+		itemStore:          storage.NewItemStore(cfg.DB),
+		spaceStore:         storage.NewSpaceStore(cfg.DB),
+		identityStore:      storage.NewIdentityStore(cfg.DB),
+		learningService:    cfg.LearningService,
+		proactiveService:   cfg.ProactiveService,
+		discoveryRegistry:  cfg.DiscoveryRegistry,
+		discoveryService:   cfg.DiscoveryService,
+		executionEngine:    cfg.ExecutionEngine,
+		wsHub:              NewWebSocketHub(),
 	}
 
 	s.setupRouter()
@@ -154,6 +166,26 @@ func (s *Server) setupRouter() {
 		if s.proactiveService != nil {
 			proactiveHandlers := NewProactiveHandlers(s.proactiveService, s)
 			proactiveHandlers.RegisterRoutes(r)
+		}
+
+		// Discovery (if services are configured)
+		if s.discoveryRegistry != nil && s.discoveryService != nil && s.executionEngine != nil {
+			discoveryAPI := NewDiscoveryAPI(s.discoveryRegistry, s.discoveryService, s.executionEngine)
+			r.Route("/agents", func(r chi.Router) {
+				r.Get("/", discoveryAPI.handleListAgentsChiAdapter)
+				r.Get("/{id}", discoveryAPI.handleGetAgentChiAdapter)
+				r.Post("/", discoveryAPI.handleRegisterAgentChiAdapter)
+				r.Delete("/{id}", discoveryAPI.handleUnregisterAgentChiAdapter)
+				r.Put("/{id}/status", discoveryAPI.handleUpdateAgentStatusChiAdapter)
+			})
+			r.Get("/capabilities", discoveryAPI.handleListCapabilitiesChiAdapter)
+			r.Post("/discover", discoveryAPI.handleDiscoverChiAdapter)
+			r.Post("/discover/best", discoveryAPI.handleDiscoverBestChiAdapter)
+			r.Post("/execute", discoveryAPI.handleExecuteChiAdapter)
+			r.Post("/execute/intent", discoveryAPI.handleExecuteIntentChiAdapter)
+			r.Post("/execute/chain", discoveryAPI.handleExecuteChainChiAdapter)
+			r.Get("/execute/{id}", discoveryAPI.handleGetExecutionResultChiAdapter)
+			r.Get("/discovery/stats", discoveryAPI.handleDiscoveryStatsChiAdapter)
 		}
 	})
 
@@ -526,6 +558,17 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 		proactiveStats, err := s.proactiveService.GetStats(r.Context())
 		if err == nil {
 			result["proactive"] = proactiveStats
+		}
+	}
+
+	// Include discovery stats if available
+	if s.discoveryRegistry != nil && s.discoveryService != nil {
+		result["discovery"] = map[string]interface{}{
+			"registry":  s.discoveryRegistry.Stats(),
+			"discovery": s.discoveryService.Stats(),
+		}
+		if s.executionEngine != nil {
+			result["execution"] = s.executionEngine.Stats()
 		}
 	}
 
