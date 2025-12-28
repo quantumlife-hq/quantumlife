@@ -12,7 +12,7 @@
 
 | Phase | Status | Progress |
 |-------|--------|----------|
-| Phase 1: MCP Foundation | 🔄 In Progress | 40% |
+| Phase 1: MCP Foundation | 🔄 In Progress | 60% |
 | Phase 2: New Integrations | ⏳ Pending | 0% |
 | Phase 3: Mesh Activation | ⏳ Pending | 0% |
 | Phase 4: UI Modernization | ⏳ Pending | 0% |
@@ -44,13 +44,14 @@
 **Notes**: Wraps existing client at `internal/spaces/gmail/`. OAuth handled separately.
 
 ### 1.3 Calendar MCP Server
-- [ ] `internal/mcp/servers/calendar/server.go` - Main server
-- [ ] `internal/mcp/servers/calendar/tools.go` - Tool implementations
-- [ ] Tools: `calendar.list_events`, `calendar.create_event`, `calendar.quick_add`, `calendar.find_free_time`, `calendar.delete_event`
-- [ ] Resources: `calendar://today`, `calendar://week`
+- [x] `internal/mcp/servers/calendar/server.go` - Main server with all tools
+- [x] Tools: `calendar.list_events`, `calendar.today`, `calendar.upcoming`, `calendar.get_event`
+- [x] Tools: `calendar.create_event`, `calendar.quick_add`, `calendar.update_event`, `calendar.delete_event`
+- [x] Tools: `calendar.find_free_time`, `calendar.list_calendars`
+- [x] Resources: `calendar://today`, `calendar://week`
 
-**Status**: ⏳ Not started
-**Notes**: Existing OAuth code at `internal/spaces/calendar/`
+**Status**: ✅ Complete
+**Notes**: Wraps existing client. Natural language support via quick_add.
 
 ### 1.4 Finance MCP Server
 - [ ] `internal/mcp/servers/finance/server.go` - Main server
@@ -223,7 +224,10 @@
 - ✅ Completed Phase 1.2 - Gmail MCP Server
   - 11 tools: list_messages, get_message, send_message, reply, archive, trash, star, mark_read, label, list_labels, create_draft
   - 1 resource: gmail://inbox
-- **Next**: Phase 1.3 - Calendar MCP Server
+- ✅ Completed Phase 1.3 - Calendar MCP Server
+  - 10 tools: list_events, today, upcoming, get_event, create_event, quick_add, update_event, delete_event, find_free_time, list_calendars
+  - 2 resources: calendar://today, calendar://week
+- **Next**: Phase 1.4 - Finance MCP Server (optional) or wire to main.go
 
 ---
 
