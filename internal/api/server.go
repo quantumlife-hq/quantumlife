@@ -131,6 +131,9 @@ func New(cfg Config) *Server {
 
 	s.setupRouter()
 
+	// Register MCP servers for already-connected spaces
+	s.registerConnectedMCPServers()
+
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      s.router,
@@ -140,6 +143,15 @@ func New(cfg Config) *Server {
 	}
 
 	return s
+}
+
+// registerConnectedMCPServers registers MCP servers for spaces that are already connected
+func (s *Server) registerConnectedMCPServers() {
+	// Register Gmail MCP server if connected
+	s.registerGmailMCPServer()
+
+	// Register Calendar MCP server if connected
+	s.registerCalendarMCPServer()
 }
 
 // MCPAPI returns the MCP API handler for registering servers

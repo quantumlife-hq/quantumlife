@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"google.golang.org/api/gmail/v1"
-
 	gmailclient "github.com/quantumlife/quantumlife/internal/spaces/gmail"
 	"github.com/quantumlife/quantumlife/internal/mcp/server"
 )
@@ -18,14 +16,14 @@ type Server struct {
 	client *gmailclient.Client
 }
 
-// New creates a new Gmail MCP server
-func New(gmailService *gmail.Service) *Server {
+// New creates a new Gmail MCP server from a Gmail client
+func New(client *gmailclient.Client) *Server {
 	s := &Server{
 		Server: server.New(server.Config{
 			Name:    "gmail",
 			Version: "1.0.0",
 		}),
-		client: gmailclient.NewClient(gmailService),
+		client: client,
 	}
 
 	s.registerTools()

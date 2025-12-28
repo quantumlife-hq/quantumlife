@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	mcpcalendar "github.com/quantumlife/quantumlife/internal/mcp/servers/calendar"
+	mcpgmail "github.com/quantumlife/quantumlife/internal/mcp/servers/gmail"
 )
 
 // SetupStatus represents the current setup progress
@@ -229,10 +232,18 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	case "gmail":
 		if s.gmailSpace != nil {
 			err = s.gmailSpace.CompleteOAuth(r.Context(), code)
+			if err == nil {
+				// Register Gmail MCP server
+				s.registerGmailMCPServer()
+			}
 		}
 	case "calendar":
 		if s.calendarSpace != nil {
 			err = s.calendarSpace.CompleteOAuth(r.Context(), code)
+			if err == nil {
+				// Register Calendar MCP server
+				s.registerCalendarMCPServer()
+			}
 		}
 	default:
 		s.respondJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider"})
@@ -257,6 +268,46 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		"message":  "connected successfully",
 		"provider": provider,
 	})
+}
+
+// registerGmailMCPServer creates and registers the Gmail MCP server
+func (s *Server) registerGmailMCPServer() {
+	if s.gmailSpace == nil || !s.gmailSpace.IsConnected() {
+		return
+	}
+	if s.mcpAPI == nil {
+		return
+	}
+
+	client := s.gmailSpace.GetClient()
+	if client == nil {
+		return
+	}
+
+	server := mcpgmail.New(client)
+	if server != nil {
+		s.mcpAPI.RegisterServer("gmail", server.Server)
+	}
+}
+
+// registerCalendarMCPServer creates and registers the Calendar MCP server
+func (s *Server) registerCalendarMCPServer() {
+	if s.calendarSpace == nil || !s.calendarSpace.IsConnected() {
+		return
+	}
+	if s.mcpAPI == nil {
+		return
+	}
+
+	client := s.calendarSpace.GetClient()
+	if client == nil {
+		return
+	}
+
+	server := mcpcalendar.New(client)
+	if server != nil {
+		s.mcpAPI.RegisterServer("calendar", server.Server)
+	}
 }
 
 // Waitlist handlers

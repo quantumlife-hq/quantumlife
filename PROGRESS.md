@@ -12,7 +12,7 @@
 
 | Phase | Status | Progress |
 |-------|--------|----------|
-| Phase 1: MCP Foundation | 🔄 In Progress | 80% |
+| Phase 1: MCP Foundation | ✅ Complete | 100% |
 | Phase 2: New Integrations | ⏳ Pending | 0% |
 | Phase 3: Mesh Activation | ⏳ Pending | 0% |
 | Phase 4: UI Modernization | ⏳ Pending | 0% |
@@ -65,10 +65,11 @@
 - [x] `internal/api/mcp.go` - MCP API endpoints
 - [x] Added MCPAPI to Server struct and Config
 - [x] Registered MCP routes in setupRouter
-- [ ] Register MCP servers when OAuth completes
-- [ ] Add MCP server status to `/api/v1/stats`
+- [x] Register MCP servers when OAuth completes
+- [x] Register MCP servers on startup (for already-connected spaces)
+- [x] Added GetClient() to Gmail and Calendar spaces
 
-**Status**: 🔄 In Progress (API ready, servers need registration on OAuth)
+**Status**: ✅ Complete
 
 ---
 
@@ -234,7 +235,12 @@
   - GET /api/v1/mcp/servers/{name}/tools - List tools
   - POST /api/v1/mcp/servers/{name}/tools/{tool} - Call tool
   - POST /api/v1/mcp/call - Direct tool call (finds server)
-- **Next**: Register MCP servers when OAuth completes, or Phase 2
+- ✅ Completed Phase 1.5 - Wire MCP to System
+  - Register MCP servers on OAuth callback
+  - Register MCP servers on startup
+  - Added GetClient() to spaces
+- **Phase 1 COMPLETE!**
+- **Next**: Phase 2 (Slack, Notion, GitHub, Outlook) or Phase 3 (Mesh Activation)
 
 ---
 

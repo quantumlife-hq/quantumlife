@@ -18,8 +18,12 @@ type Server struct {
 	client *calclient.Client
 }
 
-// New creates a new Calendar MCP server
+// New creates a new Calendar MCP server from a Calendar client
 func New(client *calclient.Client) *Server {
+	if client == nil {
+		return nil
+	}
+
 	s := &Server{
 		Server: server.New(server.Config{
 			Name:    "calendar",

@@ -288,6 +288,13 @@ func (s *Space) GetSyncStatus() spaces.SyncStatus {
 	return s.syncStatus
 }
 
+// GetClient returns the Gmail client (nil if not connected)
+func (s *Space) GetClient() *Client {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.client
+}
+
 func (s *Space) setSyncError(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
