@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -326,6 +327,312 @@ func TestMCPProtocol_ResourcesList(t *testing.T) {
 	}
 }
 
+// TestMCPProtocol_UnknownTool verifies unknown tools return error result (not JSON-RPC error).
+func TestMCPProtocol_UnknownTool(t *testing.T) {
+	srv := createTestServer()
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	// Initialize first
+	initReq := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params":  map[string]interface{}{},
+	}
+	doMCPRequest(t, ts.URL, initReq)
+
+	// Call unknown tool
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      "nonexistent.tool",
+			"arguments": map[string]interface{}{},
+		},
+	}
+
+	resp := doMCPRequest(t, ts.URL, req)
+
+	// Should NOT be a JSON-RPC error
+	if resp.Error != nil {
+		t.Errorf("unknown tool should not return JSON-RPC error, got: %v", resp.Error)
+	}
+
+	// Should return tool result with isError flag
+	result, ok := resp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result is not an object: %T", resp.Result)
+	}
+
+	// Should have isError: true
+	isError, _ := result["isError"].(bool)
+	if !isError {
+		t.Error("unknown tool should return isError: true")
+	}
+
+	// Should have content with error message
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Error("result should have content array with error message")
+	}
+}
+
+// TestMCPProtocol_MissingRequiredParams verifies missing required params returns error result.
+func TestMCPProtocol_MissingRequiredParams(t *testing.T) {
+	srv := createTestServer()
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	// Initialize first
+	initReq := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params":  map[string]interface{}{},
+	}
+	doMCPRequest(t, ts.URL, initReq)
+
+	// Call tool without required 'message' param
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      "test.echo",
+			"arguments": map[string]interface{}{}, // Missing required 'message'
+		},
+	}
+
+	resp := doMCPRequest(t, ts.URL, req)
+
+	// Should NOT be a JSON-RPC error (tool errors are in result)
+	if resp.Error != nil {
+		t.Errorf("missing params should not return JSON-RPC error, got: %v", resp.Error)
+	}
+
+	result, ok := resp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result is not an object: %T", resp.Result)
+	}
+
+	// Should have isError: true
+	isError, _ := result["isError"].(bool)
+	if !isError {
+		t.Error("missing required params should return isError: true")
+	}
+}
+
+// TestMCPProtocol_HTTPMethodRestriction verifies only POST is accepted.
+func TestMCPProtocol_HTTPMethodRestriction(t *testing.T) {
+	srv := createTestServer()
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	methods := []string{"GET", "PUT", "DELETE", "PATCH"}
+
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			req, err := http.NewRequest(method, ts.URL, nil)
+			if err != nil {
+				t.Fatalf("failed to create request: %v", err)
+			}
+
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("failed to send request: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusMethodNotAllowed {
+				t.Errorf("expected 405 for %s, got %d", method, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestMCPProtocol_ParseError verifies invalid JSON returns parse error.
+func TestMCPProtocol_ParseError(t *testing.T) {
+	srv := createTestServer()
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	// Send invalid JSON
+	resp, err := http.Post(ts.URL, "application/json", bytes.NewReader([]byte("{invalid json")))
+	if err != nil {
+		t.Fatalf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var mcpResp MCPResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mcpResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if mcpResp.Error == nil {
+		t.Fatal("expected error response for invalid JSON")
+	}
+
+	// Parse error code is -32700
+	if int(mcpResp.Error.Code) != -32700 {
+		t.Errorf("expected error code -32700 (parse error), got %d", int(mcpResp.Error.Code))
+	}
+}
+
+// TestMCPProtocol_ResourcesRead verifies resources/read returns proper structure.
+func TestMCPProtocol_ResourcesRead(t *testing.T) {
+	srv := createTestServerWithResource()
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	t.Run("valid resource", func(t *testing.T) {
+		req := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "resources/read",
+			"params": map[string]interface{}{
+				"uri": "test://example",
+			},
+		}
+
+		resp := doMCPRequest(t, ts.URL, req)
+
+		if resp.Error != nil {
+			t.Fatalf("unexpected error: %v", resp.Error)
+		}
+
+		result, ok := resp.Result.(map[string]interface{})
+		if !ok {
+			t.Fatalf("result is not an object: %T", resp.Result)
+		}
+
+		// Must have contents array
+		contents, ok := result["contents"].([]interface{})
+		if !ok {
+			t.Fatal("result missing contents array")
+		}
+
+		if len(contents) == 0 {
+			t.Error("contents array should not be empty")
+		}
+
+		// Each content must have uri
+		for i, content := range contents {
+			contentMap, ok := content.(map[string]interface{})
+			if !ok {
+				t.Errorf("contents[%d] is not an object", i)
+				continue
+			}
+
+			if _, ok := contentMap["uri"]; !ok {
+				t.Errorf("contents[%d] missing uri", i)
+			}
+		}
+	})
+
+	t.Run("unknown resource", func(t *testing.T) {
+		req := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "resources/read",
+			"params": map[string]interface{}{
+				"uri": "test://nonexistent",
+			},
+		}
+
+		resp := doMCPRequest(t, ts.URL, req)
+
+		// Unknown resource should return error
+		if resp.Error == nil {
+			t.Error("expected error for unknown resource")
+		}
+	})
+}
+
+// TestMCPProtocol_Capabilities verifies capabilities are set correctly.
+func TestMCPProtocol_Capabilities(t *testing.T) {
+	t.Run("server with tools", func(t *testing.T) {
+		srv := createTestServer()
+		ts := httptest.NewServer(srv)
+		defer ts.Close()
+
+		req := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "initialize",
+			"params":  map[string]interface{}{},
+		}
+
+		resp := doMCPRequest(t, ts.URL, req)
+
+		result := resp.Result.(map[string]interface{})
+		caps := result["capabilities"].(map[string]interface{})
+
+		// Should have tools capability
+		if _, ok := caps["tools"]; !ok {
+			t.Error("server with tools should advertise tools capability")
+		}
+	})
+
+	t.Run("server with resources", func(t *testing.T) {
+		srv := createTestServerWithResource()
+		ts := httptest.NewServer(srv)
+		defer ts.Close()
+
+		req := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"id":      1,
+			"method":  "initialize",
+			"params":  map[string]interface{}{},
+		}
+
+		resp := doMCPRequest(t, ts.URL, req)
+
+		result := resp.Result.(map[string]interface{})
+		caps := result["capabilities"].(map[string]interface{})
+
+		// Should have resources capability
+		if _, ok := caps["resources"]; !ok {
+			t.Error("server with resources should advertise resources capability")
+		}
+	})
+}
+
+// TestMCPProtocol_NotificationsInitialized verifies notifications/initialized is accepted.
+func TestMCPProtocol_NotificationsInitialized(t *testing.T) {
+	srv := createTestServer()
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	// First initialize
+	initReq := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params":  map[string]interface{}{},
+	}
+	doMCPRequest(t, ts.URL, initReq)
+
+	// Send notifications/initialized (no id for notifications)
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	}
+
+	body, _ := json.Marshal(req)
+	resp, err := http.Post(ts.URL, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Notifications should be accepted (200 OK)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for notification, got %d", resp.StatusCode)
+	}
+}
+
 // TestMCPProtocol_IDPreserved verifies request ID is preserved in response.
 func TestMCPProtocol_IDPreserved(t *testing.T) {
 	srv := createTestServer()
@@ -380,8 +687,40 @@ func createTestServer() *server.Server {
 			Build(),
 		func(ctx context.Context, args json.RawMessage) (*server.ToolResult, error) {
 			parsed := server.ParseArgs(args)
-			msg := parsed.String("message")
+			msg, err := parsed.RequireString("message")
+			if err != nil {
+				return server.ErrorResult(err.Error()), nil
+			}
 			return server.SuccessResult("Echo: " + msg), nil
+		},
+	)
+
+	return srv
+}
+
+func createTestServerWithResource() *server.Server {
+	srv := server.New(server.Config{
+		Name:    "test-server",
+		Version: "1.0.0",
+	})
+
+	// Register a test resource
+	srv.RegisterResource(
+		server.Resource{
+			URI:         "test://example",
+			Name:        "Test Resource",
+			Description: "A test resource for contract testing",
+			MimeType:    "text/plain",
+		},
+		func(ctx context.Context, uri string) (*server.ResourceContent, error) {
+			if uri == "test://example" {
+				return &server.ResourceContent{
+					URI:      uri,
+					MimeType: "text/plain",
+					Text:     "Test resource content",
+				}, nil
+			}
+			return nil, errors.New("resource not found")
 		},
 	)
 
