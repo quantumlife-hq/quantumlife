@@ -12,7 +12,7 @@
 
 | Phase | Status | Progress |
 |-------|--------|----------|
-| Phase 1: MCP Foundation | 🔄 In Progress | 60% |
+| Phase 1: MCP Foundation | 🔄 In Progress | 80% |
 | Phase 2: New Integrations | ⏳ Pending | 0% |
 | Phase 3: Mesh Activation | ⏳ Pending | 0% |
 | Phase 4: UI Modernization | ⏳ Pending | 0% |
@@ -62,11 +62,13 @@
 **Notes**: Plaid scaffolding at `internal/finance/`
 
 ### 1.5 Wire MCP to System
-- [ ] `internal/discovery/mcp_handler.go` - Bridge MCP to discovery
-- [ ] Update `cmd/quantumlife/main.go` - Register MCP servers on startup
+- [x] `internal/api/mcp.go` - MCP API endpoints
+- [x] Added MCPAPI to Server struct and Config
+- [x] Registered MCP routes in setupRouter
+- [ ] Register MCP servers when OAuth completes
 - [ ] Add MCP server status to `/api/v1/stats`
 
-**Status**: ⏳ Not started
+**Status**: 🔄 In Progress (API ready, servers need registration on OAuth)
 
 ---
 
@@ -227,7 +229,12 @@
 - ✅ Completed Phase 1.3 - Calendar MCP Server
   - 10 tools: list_events, today, upcoming, get_event, create_event, quick_add, update_event, delete_event, find_free_time, list_calendars
   - 2 resources: calendar://today, calendar://week
-- **Next**: Phase 1.4 - Finance MCP Server (optional) or wire to main.go
+- ✅ Added MCP API endpoints (`internal/api/mcp.go`)
+  - GET /api/v1/mcp/servers - List all MCP servers
+  - GET /api/v1/mcp/servers/{name}/tools - List tools
+  - POST /api/v1/mcp/servers/{name}/tools/{tool} - Call tool
+  - POST /api/v1/mcp/call - Direct tool call (finds server)
+- **Next**: Register MCP servers when OAuth completes, or Phase 2
 
 ---
 

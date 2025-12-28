@@ -67,6 +67,9 @@ type Server struct {
 	// Notifications
 	notificationService *notifications.Service
 
+	// MCP
+	mcpAPI *MCPAPI
+
 	// Spaces (for OAuth)
 	gmailSpace    *gmail.Space
 	calendarSpace *calendar.Space
@@ -91,12 +94,19 @@ type Config struct {
 	DiscoveryService    *discovery.DiscoveryService
 	ExecutionEngine     *discovery.ExecutionEngine
 	NotificationService *notifications.Service
+	MCPAPI              *MCPAPI
 	GmailSpace          *gmail.Space
 	CalendarSpace       *calendar.Space
 }
 
 // New creates a new API server
 func New(cfg Config) *Server {
+	// Create MCP API if not provided
+	mcpAPI := cfg.MCPAPI
+	if mcpAPI == nil {
+		mcpAPI = NewMCPAPI()
+	}
+
 	s := &Server{
 		agent:               cfg.Agent,
 		db:                  cfg.DB,
@@ -113,6 +123,7 @@ func New(cfg Config) *Server {
 		discoveryService:    cfg.DiscoveryService,
 		executionEngine:     cfg.ExecutionEngine,
 		notificationService: cfg.NotificationService,
+		mcpAPI:              mcpAPI,
 		gmailSpace:          cfg.GmailSpace,
 		calendarSpace:       cfg.CalendarSpace,
 		wsHub:               NewWebSocketHub(),
@@ -129,6 +140,11 @@ func New(cfg Config) *Server {
 	}
 
 	return s
+}
+
+// MCPAPI returns the MCP API handler for registering servers
+func (s *Server) MCPAPI() *MCPAPI {
+	return s.mcpAPI
 }
 
 // setupRouter configures all routes
@@ -248,6 +264,11 @@ func (s *Server) setupRouter() {
 			r.Post("/execute/chain", discoveryAPI.handleExecuteChainChiAdapter)
 			r.Get("/execute/{id}", discoveryAPI.handleGetExecutionResultChiAdapter)
 			r.Get("/discovery/stats", discoveryAPI.handleDiscoveryStatsChiAdapter)
+		}
+
+		// MCP API (always available)
+		if s.mcpAPI != nil {
+			s.mcpAPI.RegisterRoutes(r)
 		}
 	})
 
