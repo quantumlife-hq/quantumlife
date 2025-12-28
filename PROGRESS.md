@@ -12,7 +12,7 @@
 
 | Phase | Status | Progress |
 |-------|--------|----------|
-| Phase 1: MCP Foundation | 🔄 In Progress | 0% |
+| Phase 1: MCP Foundation | 🔄 In Progress | 20% |
 | Phase 2: New Integrations | ⏳ Pending | 0% |
 | Phase 3: Mesh Activation | ⏳ Pending | 0% |
 | Phase 4: UI Modernization | ⏳ Pending | 0% |
@@ -25,13 +25,13 @@
 ## Phase 1: MCP Foundation
 
 ### 1.1 MCP Server Framework
-- [ ] `internal/mcp/server/server.go` - Base MCP server implementation
-- [ ] `internal/mcp/server/handler.go` - JSON-RPC request routing
-- [ ] `internal/mcp/server/registry.go` - Tool/resource registration
-- [ ] `internal/mcp/server/types.go` - Shared types
+- [x] `internal/mcp/server/types.go` - Shared types (Tool, Resource, Request, Response, etc.)
+- [x] `internal/mcp/server/registry.go` - Tool/resource registration
+- [x] `internal/mcp/server/handler.go` - ToolBuilder, Args parser, WrapHandler helpers
+- [x] `internal/mcp/server/server.go` - HTTP handler, JSON-RPC routing
 
-**Status**: ⏳ Not started
-**Notes**: Client exists at `internal/mcp/client.go` - use same types where possible
+**Status**: ✅ Complete
+**Notes**: Framework ready. Now build servers that use it.
 
 ### 1.2 Gmail MCP Server
 - [ ] `internal/mcp/servers/gmail/server.go` - Main server
@@ -215,7 +215,12 @@
 - Created 5-phase MCP-first roadmap
 - Updated ARCHITECTURE.md and README.md
 - Created PROGRESS.md for cross-session tracking
-- **Next**: Start Phase 1.1 - MCP Server Framework
+- ✅ Completed Phase 1.1 - MCP Server Framework
+  - `internal/mcp/server/types.go` - Shared MCP types
+  - `internal/mcp/server/registry.go` - Tool/resource registry
+  - `internal/mcp/server/handler.go` - ToolBuilder, Args parser
+  - `internal/mcp/server/server.go` - HTTP handler + JSON-RPC
+- **Next**: Phase 1.2 - Gmail MCP Server
 
 ---
 
