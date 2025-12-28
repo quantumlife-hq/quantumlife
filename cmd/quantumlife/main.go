@@ -14,6 +14,7 @@ import (
 	"github.com/quantumlife/quantumlife/internal/agent"
 	"github.com/quantumlife/quantumlife/internal/api"
 	"github.com/quantumlife/quantumlife/internal/embeddings"
+	"github.com/quantumlife/quantumlife/internal/identity"
 	"github.com/quantumlife/quantumlife/internal/llm"
 	"github.com/quantumlife/quantumlife/internal/storage"
 	"github.com/quantumlife/quantumlife/internal/vectors"
@@ -59,14 +60,21 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
-	// Load identity
+	// Load identity (if exists)
 	identityStore := storage.NewIdentityStore(db)
-	identity, _, err := identityStore.LoadIdentity()
-	if err != nil || identity == nil {
-		return fmt.Errorf("no identity found - run 'ql init' first")
+	identityMgr := identity.NewManager(identityStore)
+	you, _, err := identityStore.LoadIdentity()
+	if err != nil {
+		// Identity load error but not "not found" - continue without identity for setup
+		fmt.Printf("⚠️  Identity load issue: %v\n", err)
+		you = nil
 	}
 
-	fmt.Printf("👤 Identity: %s\n", identity.Name)
+	if you != nil {
+		fmt.Printf("👤 Identity: %s\n", you.Name)
+	} else {
+		fmt.Println("📝 No identity yet - setup will be available via web UI")
+	}
 
 	// Connect to Qdrant
 	vectorStore, err := vectors.NewStore(vectors.DefaultConfig())
@@ -101,9 +109,9 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		fmt.Println("✅ Claude API configured")
 	}
 
-	// Create agent
+	// Create agent (may have nil identity)
 	ag := agent.New(agent.Config{
-		Identity:  identity,
+		Identity:  you,
 		DB:        db,
 		Vectors:   vectorStore,
 		Embedder:  embedder,
@@ -114,16 +122,19 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := ag.Start(ctx); err != nil {
-		fmt.Printf("⚠️  Failed to start agent: %v\n", err)
+	if you != nil {
+		if err := ag.Start(ctx); err != nil {
+			fmt.Printf("⚠️  Failed to start agent: %v\n", err)
+		}
 	}
 
 	// Create and start API server
 	server := api.New(api.Config{
-		Port:     port,
-		Agent:    ag,
-		DB:       db,
-		Identity: identity,
+		Port:            port,
+		Agent:           ag,
+		DB:              db,
+		Identity:        you,
+		IdentityManager: identityMgr,
 	})
 
 	// Handle shutdown

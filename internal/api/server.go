@@ -18,8 +18,13 @@ import (
 	"github.com/quantumlife/quantumlife/internal/agent"
 	"github.com/quantumlife/quantumlife/internal/core"
 	"github.com/quantumlife/quantumlife/internal/discovery"
+	"github.com/quantumlife/quantumlife/internal/identity"
 	"github.com/quantumlife/quantumlife/internal/learning"
+	"github.com/quantumlife/quantumlife/internal/memory"
+	"github.com/quantumlife/quantumlife/internal/notifications"
 	"github.com/quantumlife/quantumlife/internal/proactive"
+	"github.com/quantumlife/quantumlife/internal/spaces/calendar"
+	"github.com/quantumlife/quantumlife/internal/spaces/gmail"
 	"github.com/quantumlife/quantumlife/internal/storage"
 )
 
@@ -42,6 +47,12 @@ type Server struct {
 	spaceStore    *storage.SpaceStore
 	identityStore *storage.IdentityStore
 
+	// Memory manager
+	memoryMgr *memory.Manager
+
+	// Identity manager
+	identityMgr *identity.Manager
+
 	// Learning
 	learningService *learning.Service
 
@@ -53,6 +64,13 @@ type Server struct {
 	discoveryService   *discovery.DiscoveryService
 	executionEngine    *discovery.ExecutionEngine
 
+	// Notifications
+	notificationService *notifications.Service
+
+	// Spaces (for OAuth)
+	gmailSpace    *gmail.Space
+	calendarSpace *calendar.Space
+
 	// State
 	identity *core.You
 
@@ -61,33 +79,43 @@ type Server struct {
 
 // Config for the server
 type Config struct {
-	Port               int
-	Agent              *agent.Agent
-	DB                 *storage.DB
-	Identity           *core.You
-	LearningService    *learning.Service
-	ProactiveService   *proactive.Service
-	DiscoveryRegistry  *discovery.Registry
-	DiscoveryService   *discovery.DiscoveryService
-	ExecutionEngine    *discovery.ExecutionEngine
+	Port                int
+	Agent               *agent.Agent
+	DB                  *storage.DB
+	Identity            *core.You
+	IdentityManager     *identity.Manager
+	MemoryManager       *memory.Manager
+	LearningService     *learning.Service
+	ProactiveService    *proactive.Service
+	DiscoveryRegistry   *discovery.Registry
+	DiscoveryService    *discovery.DiscoveryService
+	ExecutionEngine     *discovery.ExecutionEngine
+	NotificationService *notifications.Service
+	GmailSpace          *gmail.Space
+	CalendarSpace       *calendar.Space
 }
 
 // New creates a new API server
 func New(cfg Config) *Server {
 	s := &Server{
-		agent:              cfg.Agent,
-		db:                 cfg.DB,
-		identity:           cfg.Identity,
-		hatStore:           storage.NewHatStore(cfg.DB),
-		itemStore:          storage.NewItemStore(cfg.DB),
-		spaceStore:         storage.NewSpaceStore(cfg.DB),
-		identityStore:      storage.NewIdentityStore(cfg.DB),
-		learningService:    cfg.LearningService,
-		proactiveService:   cfg.ProactiveService,
-		discoveryRegistry:  cfg.DiscoveryRegistry,
-		discoveryService:   cfg.DiscoveryService,
-		executionEngine:    cfg.ExecutionEngine,
-		wsHub:              NewWebSocketHub(),
+		agent:               cfg.Agent,
+		db:                  cfg.DB,
+		identity:            cfg.Identity,
+		identityMgr:         cfg.IdentityManager,
+		memoryMgr:           cfg.MemoryManager,
+		hatStore:            storage.NewHatStore(cfg.DB),
+		itemStore:           storage.NewItemStore(cfg.DB),
+		spaceStore:          storage.NewSpaceStore(cfg.DB),
+		identityStore:       storage.NewIdentityStore(cfg.DB),
+		learningService:     cfg.LearningService,
+		proactiveService:    cfg.ProactiveService,
+		discoveryRegistry:   cfg.DiscoveryRegistry,
+		discoveryService:    cfg.DiscoveryService,
+		executionEngine:     cfg.ExecutionEngine,
+		notificationService: cfg.NotificationService,
+		gmailSpace:          cfg.GmailSpace,
+		calendarSpace:       cfg.CalendarSpace,
+		wsHub:               NewWebSocketHub(),
 	}
 
 	s.setupRouter()
@@ -156,6 +184,40 @@ func (s *Server) setupRouter() {
 		// Stats
 		r.Get("/stats", s.handleGetStats)
 
+		// Settings
+		r.Get("/settings", s.handleGetSettings)
+		r.Put("/settings", s.handleUpdateSettings)
+		r.Get("/settings/hats", s.handleGetHatSettings)
+		r.Put("/settings/hats/{id}", s.handleUpdateHatSettings)
+		r.Post("/settings/onboarding", s.handleUpdateOnboardingStep)
+		r.Get("/settings/export", s.handleExportData)
+		r.Delete("/settings/account", s.handleDeleteAccount)
+
+		// Setup / Onboarding
+		r.Get("/setup/status", s.handleGetSetupStatus)
+		r.Post("/setup/progress", s.handleUpdateSetupProgress)
+		r.Post("/setup/complete", s.handleCompleteSetup)
+		r.Post("/setup/identity", s.handleCreateIdentity)
+		r.Get("/oauth/{provider}/url", s.handleGetOAuthURL)
+		r.Get("/oauth/{provider}/callback", s.handleOAuthCallback)
+
+		// Waitlist
+		r.Post("/waitlist", s.handleJoinWaitlist)
+		r.Get("/waitlist/count", s.handleGetWaitlistCount)
+
+		// Notifications (if service configured)
+		if s.notificationService != nil {
+			notifAPI := NewNotificationsAPI(s.notificationService)
+			r.Get("/notifications", notifAPI.handleGetNotifications)
+			r.Post("/notifications", notifAPI.handleCreateNotification)
+			r.Get("/notifications/unread-count", notifAPI.handleGetUnreadCount)
+			r.Get("/notifications/stats", notifAPI.handleGetNotificationStats)
+			r.Post("/notifications/read-all", notifAPI.handleMarkAllNotificationsRead)
+			r.Get("/notifications/{id}", notifAPI.handleGetNotification)
+			r.Post("/notifications/{id}/read", notifAPI.handleMarkNotificationRead)
+			r.Post("/notifications/{id}/dismiss", notifAPI.handleDismissNotification)
+		}
+
 		// Learning (if service is configured)
 		if s.learningService != nil {
 			learningHandlers := NewLearningHandlers(s.learningService, s)
@@ -198,8 +260,28 @@ func (s *Server) setupRouter() {
 		panic(fmt.Sprintf("failed to get static files: %v", err))
 	}
 
-	// Serve index.html for root
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	// Serve root - landing page or app based on identity
+	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+		// Check if user has an identity
+		hasIdentity := s.identity != nil
+
+		if hasIdentity {
+			// Serve the app
+			data, err := fs.ReadFile(staticFS, "index.html")
+			if err != nil {
+				http.Error(w, "Not found", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(data)
+		} else {
+			// Serve the landing page
+			http.ServeFile(w, req, "web/landing/index.html")
+		}
+	})
+
+	// App route - always serves the app UI
+	r.Get("/app", func(w http.ResponseWriter, req *http.Request) {
 		data, err := fs.ReadFile(staticFS, "index.html")
 		if err != nil {
 			http.Error(w, "Not found", http.StatusNotFound)
@@ -208,6 +290,9 @@ func (s *Server) setupRouter() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(data)
 	})
+
+	// Landing page static files
+	r.Handle("/landing/*", http.StripPrefix("/landing/", http.FileServer(http.Dir("web/landing"))))
 
 	// Serve other static files
 	fileServer := http.FileServer(http.FS(staticFS))
@@ -254,6 +339,10 @@ func (s *Server) respondError(w http.ResponseWriter, status int, message string)
 // --- Handlers ---
 
 func (s *Server) handleGetIdentity(w http.ResponseWriter, r *http.Request) {
+	if s.identity == nil {
+		s.respondJSON(w, http.StatusNotFound, map[string]string{"error": "no identity found"})
+		return
+	}
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"id":         s.identity.ID,
 		"name":       s.identity.Name,
@@ -536,8 +625,13 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 		hatCounts[string(hat.ID)] = count
 	}
 
+	identityName := ""
+	if s.identity != nil {
+		identityName = s.identity.Name
+	}
+
 	result := map[string]interface{}{
-		"identity":       s.identity.Name,
+		"identity":       identityName,
 		"total_items":    itemCount,
 		"total_memories": agentStats.TotalMemories,
 		"total_spaces":   len(spaces),

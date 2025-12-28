@@ -74,6 +74,10 @@ func New(cfg Config) *Agent {
 }
 
 func buildSystemPrompt(identity *core.You) string {
+	name := "User"
+	if identity != nil {
+		name = identity.Name
+	}
 	return fmt.Sprintf(`You are the QuantumLife agent for %s. You are their autonomous digital twin.
 
 Your role:
@@ -90,7 +94,7 @@ Personality:
 
 You have access to their memories, items, and life context. Use this to provide personalized assistance.
 
-Current time: %s`, identity.Name, identity.Name, time.Now().Format(time.RFC1123))
+Current time: %s`, name, name, time.Now().Format(time.RFC1123))
 }
 
 // Chat handles a conversation with the agent

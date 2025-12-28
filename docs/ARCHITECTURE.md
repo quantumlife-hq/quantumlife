@@ -759,4 +759,388 @@ cache := lru.New(lru.Config{
 
 ---
 
+## Behavioral Learning System (`internal/learning/`)
+
+The learning system implements TikTok-style implicit learning from user behavior to improve classification and personalization.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     LEARNING SYSTEM                              │
+│                                                                  │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │  Collector  │───►│  Detector   │───►│    Model    │         │
+│  │  (Signals)  │    │ (Patterns)  │    │  (Prefs)    │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│        ▲                   │                   │                │
+│        │                   ▼                   ▼                │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │ User Action │    │ Pattern DB  │    │  Enhanced   │         │
+│  │   Events    │    │  Storage    │    │   Triage    │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Collector | `signals.go` | Records implicit user signals (opens, archives, stars) |
+| Detector | `patterns.go` | Discovers recurring behavioral patterns |
+| Model | `model.go` | Maintains user preference model |
+| TriageEnhancer | `triage.go` | Improves item classification |
+| CalendarEnhancer | `triage.go` | Calendar-specific learning |
+
+### Signal Types
+
+```go
+// Implicit signals from user actions
+SignalTypeItemOpen      // User opened an item
+SignalTypeItemArchive   // User archived
+SignalTypeItemStar      // User starred
+SignalTypeItemDelete    // User deleted
+SignalTypeItemRespond   // User responded
+SignalTypeHatReassign   // User changed hat classification
+SignalTypePriorityChange // User adjusted priority
+SignalTypeTimeSpent     // Dwell time on item
+```
+
+### Pattern Detection
+
+The detector analyzes signals to find:
+- **Time patterns**: When user processes certain types of items
+- **Sender patterns**: Priority by sender/domain
+- **Content patterns**: Keywords that indicate priority
+- **Hat patterns**: Routing preferences by content type
+
+### Database Tables
+
+```sql
+-- Migration 009_learning.sql
+CREATE TABLE learning_signals (
+    id TEXT PRIMARY KEY,
+    signal_type TEXT NOT NULL,
+    item_id TEXT,
+    hat_id TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    metadata TEXT -- JSON
+);
+
+CREATE TABLE learning_patterns (
+    id TEXT PRIMARY KEY,
+    pattern_type TEXT NOT NULL,
+    confidence REAL DEFAULT 0.5,
+    occurrences INTEGER DEFAULT 1,
+    last_seen DATETIME,
+    metadata TEXT -- JSON
+);
+
+CREATE TABLE learning_preferences (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    confidence REAL DEFAULT 0.5,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## Proactive Recommendation System (`internal/proactive/`)
+
+The proactive system generates recommendations and nudges based on patterns and context.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   PROACTIVE SYSTEM                               │
+│                                                                  │
+│  ┌─────────────┐    ┌──────────────────┐    ┌─────────────┐    │
+│  │  Trigger    │───►│  Recommendation  │───►│   Nudge     │    │
+│  │  Detector   │    │     Engine       │    │  Generator  │    │
+│  └─────────────┘    └──────────────────┘    └─────────────┘    │
+│        ▲                     │                     │            │
+│        │                     ▼                     ▼            │
+│  ┌─────────────┐    ┌──────────────────┐    ┌─────────────┐    │
+│  │   Events    │    │   User Prefs     │    │  Delivery   │    │
+│  │  & Context  │    │  from Learning   │    │   Queue     │    │
+│  └─────────────┘    └──────────────────┘    └─────────────┘    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| TriggerDetector | `triggers.go` | Detects conditions for recommendations |
+| RecommendationEngine | `recommendations.go` | Generates personalized recommendations |
+| NudgeGenerator | `nudges.go` | Creates timely nudges with urgency levels |
+
+### Recommendation Types
+
+```go
+RecTypeAction       // Suggest an action to take
+RecTypeDelegation   // Delegate to agent
+RecTypeReminder     // Remind about something
+RecTypeInsight      // Share a pattern insight
+RecTypeOptimization // Suggest workflow improvement
+```
+
+### Nudge Urgency Levels
+
+```go
+NudgeUrgencyLow      // Can wait
+NudgeUrgencyMedium   // Attention soon
+NudgeUrgencyHigh     // Needs attention now
+NudgeUrgencyCritical // Immediate action required
+```
+
+### Database Tables
+
+```sql
+-- Migration 010_proactive.sql
+CREATE TABLE proactive_triggers (
+    id TEXT PRIMARY KEY,
+    trigger_type TEXT NOT NULL,
+    conditions TEXT, -- JSON
+    last_fired DATETIME,
+    fire_count INTEGER DEFAULT 0
+);
+
+CREATE TABLE recommendations (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    confidence REAL DEFAULT 0.5,
+    status TEXT DEFAULT 'pending',
+    hat_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE nudges (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    message TEXT,
+    urgency TEXT DEFAULT 'medium',
+    scheduled_for DATETIME,
+    delivered_at DATETIME,
+    dismissed_at DATETIME,
+    hat_id TEXT
+);
+```
+
+---
+
+## Agent Discovery System (`internal/discovery/`)
+
+MCP-style agent discovery enables dynamic capability matching and execution.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    DISCOVERY SYSTEM                              │
+│                                                                  │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │  Registry   │───►│  Discovery  │───►│  Execution  │         │
+│  │  (Agents)   │    │  Service    │    │   Engine    │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│        ▲                   │                   │                │
+│        │                   ▼                   ▼                │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │  Builtin    │    │   Intent    │    │   Chain     │         │
+│  │  Agents     │    │  Matching   │    │ Execution   │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Registry | `registry.go` | Manages registered agents with trust scores |
+| DiscoveryService | `discovery.go` | Maps intents to capabilities |
+| ExecutionEngine | `execution.go` | Executes capabilities with retry support |
+| Capabilities | `capabilities.go` | Defines 30+ capability types |
+
+### Agent Types
+
+```go
+AgentTypeBuiltin  // Built into QuantumLife
+AgentTypeLocal    // Running locally
+AgentTypeRemote   // Remote service
+AgentTypeMCP      // MCP-compatible
+AgentTypePlugin   // Plugin-based
+```
+
+### Capability Types (30+)
+
+```go
+// Email
+CapEmailSend, CapEmailRead, CapEmailSearch, CapEmailArchive
+
+// Calendar
+CapCalendarBook, CapCalendarRead, CapCalendarWrite, CapCalendarCheck
+
+// Web
+CapWebSearch, CapWebBrowse, CapWebScrape
+
+// Files
+CapFileRead, CapFileWrite, CapFileSearch, CapFileOrganize
+
+// Tasks
+CapTaskCreate, CapTaskUpdate, CapTaskComplete, CapReminder
+
+// Finance
+CapFinanceBalance, CapFinanceTransaction, CapFinanceCategorize
+
+// LLM
+CapTextGenerate, CapSummarize, CapSentiment, CapTranslate
+```
+
+### Built-in Agents
+
+1. **builtin.email** - Email operations via connected accounts
+2. **builtin.calendar** - Calendar management
+3. **builtin.web** - Web search and browsing
+4. **builtin.llm** - Text generation and analysis
+5. **builtin.file** - File operations
+6. **builtin.task** - Task and reminder management
+
+### Intent Matching
+
+The discovery service maps natural language intents to capabilities:
+
+```go
+// "send an email to John" → CapEmailSend
+// "schedule a meeting" → CapCalendarBook
+// "search for budget reports" → CapFileSearch, CapWebSearch
+```
+
+### Execution Modes
+
+- **Sync**: Wait for result
+- **Async**: Return immediately, poll for result
+- **Chain**: Execute multiple capabilities in sequence
+
+### Database Tables
+
+```sql
+-- Migration 011_discovery.sql
+CREATE TABLE agents (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL,
+    version TEXT,
+    status TEXT DEFAULT 'active',
+    capabilities TEXT, -- JSON
+    trust_score REAL DEFAULT 0.5,
+    reliability REAL DEFAULT 1.0,
+    avg_latency_ms INTEGER DEFAULT 0,
+    total_calls INTEGER DEFAULT 0,
+    success_calls INTEGER DEFAULT 0,
+    registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME
+);
+
+CREATE TABLE execution_requests (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    capability TEXT NOT NULL,
+    parameters TEXT, -- JSON
+    status TEXT DEFAULT 'pending',
+    priority INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE execution_results (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    result TEXT, -- JSON
+    error TEXT,
+    started_at DATETIME,
+    completed_at DATETIME,
+    latency_ms INTEGER
+);
+
+CREATE TABLE chain_executions (
+    id TEXT PRIMARY KEY,
+    steps TEXT, -- JSON array of execution step IDs
+    status TEXT DEFAULT 'pending',
+    current_step INTEGER DEFAULT 0,
+    started_at DATETIME,
+    completed_at DATETIME
+);
+```
+
+---
+
+## Web UI (`internal/api/static/`)
+
+Single-page React application with real-time WebSocket updates.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                          WEB UI                                  │
+│                                                                  │
+│  Technology Stack:                                               │
+│  - React 18 (CDN)                                               │
+│  - Tailwind CSS (CDN)                                           │
+│  - WebSocket for real-time updates                              │
+│                                                                  │
+│  Views:                                                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+│  │Dashboard │  │  Inbox   │  │   Hats   │  │  Recs    │        │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+│  │ Learning │  │   Chat   │  │  Spaces  │  │ Settings │        │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
+│                                                                  │
+│  Components:                                                     │
+│  - Sidebar with navigation and stats                            │
+│  - Real-time activity feed                                       │
+│  - Interactive chat interface                                    │
+│  - Space connection management                                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Views
+
+| View | Purpose |
+|------|---------|
+| Dashboard | Activity feed, stats, quick actions |
+| Inbox | All items with hat-based filtering |
+| Hats | View and manage 12 life domains |
+| Recommendations | Proactive suggestions and nudges |
+| Learning | Behavioral insights and patterns |
+| Chat | Interactive agent conversation |
+| Spaces | Connected data sources |
+| Settings | Configuration options |
+
+### WebSocket Events
+
+The UI subscribes to real-time events:
+- `item.new` - New item received
+- `item.updated` - Item changed
+- `recommendation.new` - New recommendation
+- `nudge.new` - New nudge
+- `sync.progress` - Sync status updates
+
+---
+
+## Statistics
+
+| Metric | Value |
+|--------|-------|
+| Total Lines of Code | ~32,000+ |
+| Internal Packages | 28 |
+| API Endpoints | 40+ |
+| Database Migrations | 11 |
+| Tests | 77+ |
+| Capability Types | 30+ |
+
+---
+
 **Built for the next 50 years.**

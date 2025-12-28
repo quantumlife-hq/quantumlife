@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuantumLife - Your Life on Autopilot</title>
+    <meta name="description" content="The AI that becomes you. QuantumLife is your autonomous digital twin that learns your patterns and acts on your behalf.">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="QuantumLife - Your Life on Autopilot">
+    <meta property="og:description" content="The AI that becomes you. So you can become more.">
+    <meta property="og:image" content="/landing/assets/og-image.png">
+    <meta property="og:url" content="https://quantumlife.ai">
+    <meta property="og:type" content="website">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="QuantumLife - Your Life on Autopilot">
+    <meta name="twitter:description" content="The AI that becomes you. So you can become more.">
+
+    <!-- Favicon -->
+    <link rel="icon" href="/landing/assets/favicon.svg" type="image/svg+xml">
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Custom Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            200: '#ddd6fe',
+                            300: '#c4b5fd',
+                            400: '#a78bfa',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            800: '#5b21b6',
+                            900: '#4c1d95',
+                        }
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'fade-in': 'fadeIn 0.6s ease-out forwards',
+                        'slide-up': 'slideUp 0.6s ease-out forwards',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-20px)' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(30px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Gradient backgrounds */
+        .gradient-bg {
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #0f0f1a 100%);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .gradient-border {
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+        }
+        .gradient-btn {
+            background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 50%, #a855f7 100%);
+        }
+        .gradient-btn:hover {
+            background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 50%, #8b5cf6 100%);
+        }
+
+        /* Glassmorphism */
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glass-dark {
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Glow effects */
+        .glow {
+            box-shadow: 0 0 60px rgba(139, 92, 246, 0.3);
+        }
+        .glow-sm {
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.2);
+        }
+
+        /* Scroll animations */
+        .scroll-animate {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease-out;
+        }
+        .scroll-animate.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Background pattern */
+        .hero-pattern {
+            background-image: radial-gradient(rgba(139, 92, 246, 0.1) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* Progress bar animation */
+        .progress-bar {
+            transition: width 1s ease-out;
+        }
+
+        /* Floating animation delays */
+        .float-delay-1 { animation-delay: 0s; }
+        .float-delay-2 { animation-delay: 1s; }
+        .float-delay-3 { animation-delay: 2s; }
+    </style>
+</head>
+<body class="gradient-bg text-white font-sans antialiased overflow-x-hidden">
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 z-50 glass-dark">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <a href="/" class="flex items-center space-x-2">
+                        <svg class="w-8 h-8 text-primary-500" viewBox="0 0 32 32" fill="currentColor">
+                            <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="16" cy="16" r="8" fill="currentColor" opacity="0.3"/>
+                            <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                        </svg>
+                        <span class="text-xl font-bold">QuantumLife</span>
+                    </a>
+                </div>
+
+                <!-- Desktop Nav -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="#features" class="text-gray-300 hover:text-white transition-colors">Features</a>
+                    <a href="#how-it-works" class="text-gray-300 hover:text-white transition-colors">How It Works</a>
+                    <a href="#integrations" class="text-gray-300 hover:text-white transition-colors">Integrations</a>
+                    <a href="#pricing" class="text-gray-300 hover:text-white transition-colors">Pricing</a>
+                    <a href="/app" class="px-4 py-2 rounded-lg gradient-btn text-white font-medium hover:opacity-90 transition-opacity">
+                        Login
+                    </a>
+                </div>
+
+                <!-- Mobile menu button -->
+                <div class="md:hidden">
+                    <button id="mobile-menu-btn" class="text-gray-300 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile menu -->
+        <div id="mobile-menu" class="hidden md:hidden glass-dark border-t border-white/10">
+            <div class="px-4 py-4 space-y-3">
+                <a href="#features" class="block text-gray-300 hover:text-white">Features</a>
+                <a href="#how-it-works" class="block text-gray-300 hover:text-white">How It Works</a>
+                <a href="#integrations" class="block text-gray-300 hover:text-white">Integrations</a>
+                <a href="#pricing" class="block text-gray-300 hover:text-white">Pricing</a>
+                <a href="/app" class="block px-4 py-2 rounded-lg gradient-btn text-white font-medium text-center">Login</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex items-center justify-center hero-pattern pt-16">
+        <!-- Background orbs -->
+        <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-500/20 rounded-full blur-3xl animate-float float-delay-1"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-pink-500/20 rounded-full blur-3xl animate-float float-delay-2"></div>
+        <div class="absolute top-1/2 right-1/3 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl animate-float float-delay-3"></div>
+
+        <div class="relative z-10 max-w-5xl mx-auto px-4 text-center">
+            <div class="animate-fade-in">
+                <h1 class="text-5xl md:text-7xl font-extrabold mb-6">
+                    Your Life on <span class="gradient-text">Autopilot</span>
+                </h1>
+                <p class="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto">
+                    The AI that becomes you. So you can become more.
+                </p>
+
+                <!-- Waitlist Form -->
+                <form id="hero-waitlist-form" class="flex flex-col sm:flex-row gap-4 justify-center max-w-lg mx-auto mb-6">
+                    <input
+                        type="email"
+                        name="email"
+                        placeholder="Enter your email"
+                        required
+                        class="flex-1 px-6 py-4 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/50 transition-all"
+                    >
+                    <button
+                        type="submit"
+                        class="px-8 py-4 rounded-xl gradient-btn text-white font-semibold hover:opacity-90 transition-all transform hover:scale-105 glow-sm"
+                    >
+                        Join Waitlist
+                    </button>
+                </form>
+
+                <p class="text-gray-400 text-sm">
+                    <span class="waitlist-count">0</span> people already on the waitlist
+                </p>
+            </div>
+
+            <!-- Scroll indicator -->
+            <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
+                <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                </svg>
+            </div>
+        </div>
+    </section>
+
+    <!-- Problem Section -->
+    <section class="py-24 relative">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-16 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    You're <span class="gradient-text">drowning</span> in your own life
+                </h2>
+                <p class="text-xl text-gray-400 max-w-2xl mx-auto">
+                    Modern life demands more than any human can handle.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6 scroll-animate">
+                <div class="glass rounded-2xl p-6 text-center hover:scale-105 transition-transform">
+                    <div class="text-4xl md:text-5xl font-bold gradient-text mb-2">121</div>
+                    <div class="text-gray-400">emails per day</div>
+                </div>
+                <div class="glass rounded-2xl p-6 text-center hover:scale-105 transition-transform">
+                    <div class="text-4xl md:text-5xl font-bold gradient-text mb-2">15+</div>
+                    <div class="text-gray-400">apps to manage</div>
+                </div>
+                <div class="glass rounded-2xl p-6 text-center hover:scale-105 transition-transform">
+                    <div class="text-4xl md:text-5xl font-bold gradient-text mb-2">23min</div>
+                    <div class="text-gray-400">to refocus</div>
+                </div>
+                <div class="glass rounded-2xl p-6 text-center hover:scale-105 transition-transform">
+                    <div class="text-4xl md:text-5xl font-bold gradient-text mb-2">$997B</div>
+                    <div class="text-gray-400">lost yearly</div>
+                </div>
+            </div>
+
+            <div class="text-center mt-12 scroll-animate">
+                <p class="text-2xl md:text-3xl font-semibold text-gray-200">
+                    What if AI could handle <span class="gradient-text">99%</span> of it?
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Solution Section -->
+    <section class="py-24 relative overflow-hidden">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-16 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    Meet Your <span class="gradient-text">Digital Twin</span>
+                </h2>
+                <p class="text-xl text-gray-400 max-w-2xl mx-auto">
+                    Not another app. Not another tool. An AI that learns to BE you.
+                </p>
+            </div>
+
+            <!-- Animated Twin Illustration -->
+            <div class="relative max-w-2xl mx-auto mb-16 scroll-animate">
+                <div class="glass rounded-3xl p-8 md:p-12 glow">
+                    <div class="flex items-center justify-center space-x-8">
+                        <!-- Human -->
+                        <div class="text-center">
+                            <div class="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-primary-400 to-pink-500 flex items-center justify-center text-4xl md:text-5xl animate-float">
+                                👤
+                            </div>
+                            <p class="mt-4 font-medium">You</p>
+                        </div>
+
+                        <!-- Connection -->
+                        <div class="flex-1 flex items-center">
+                            <div class="w-full h-1 bg-gradient-to-r from-primary-500 via-pink-500 to-primary-500 rounded-full relative overflow-hidden">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-pulse"></div>
+                            </div>
+                        </div>
+
+                        <!-- AI Twin -->
+                        <div class="text-center">
+                            <div class="w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-blue-400 to-primary-500 flex items-center justify-center text-4xl md:text-5xl animate-float float-delay-2">
+                                🤖
+                            </div>
+                            <p class="mt-4 font-medium">Your Twin</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Learning Points -->
+            <div class="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto scroll-animate">
+                <div class="flex items-start space-x-4">
+                    <div class="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <p class="text-gray-300">Learns how you respond to your boss (fast)</p>
+                </div>
+                <div class="flex items-start space-x-4">
+                    <div class="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <p class="text-gray-300">Knows you archive newsletters (unread)</p>
+                </div>
+                <div class="flex items-start space-x-4">
+                    <div class="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <p class="text-gray-300">Understands you prefer morning meetings</p>
+                </div>
+                <div class="flex items-start space-x-4">
+                    <div class="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <p class="text-gray-300">Remembers family comes first</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-24 relative">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-16 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    Everything You <span class="gradient-text">Need</span>
+                </h2>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="glass rounded-2xl p-8 hover:scale-105 transition-transform scroll-animate">
+                    <div class="text-4xl mb-4">🧠</div>
+                    <h3 class="text-xl font-bold mb-3">Learns You</h3>
+                    <p class="text-gray-400">
+                        TikTok-style behavioral learning. No forms. It just watches and learns your patterns.
+                    </p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="glass rounded-2xl p-8 hover:scale-105 transition-transform scroll-animate">
+                    <div class="text-4xl mb-4">🎯</div>
+                    <h3 class="text-xl font-bold mb-3">Acts For You</h3>
+                    <p class="text-gray-400">
+                        3 modes: Suggest, Supervised, Autonomous. You control how much it does.
+                    </p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="glass rounded-2xl p-8 hover:scale-105 transition-transform scroll-animate">
+                    <div class="text-4xl mb-4">🔮</div>
+                    <h3 class="text-xl font-bold mb-3">Anticipates</h3>
+                    <p class="text-gray-400">
+                        Proactive, not reactive. Reminds you before you forget. Prepares before you ask.
+                    </p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="glass rounded-2xl p-8 hover:scale-105 transition-transform scroll-animate">
+                    <div class="text-4xl mb-4">🎭</div>
+                    <h3 class="text-xl font-bold mb-3">12 Life Hats</h3>
+                    <p class="text-gray-400">
+                        Parent, Professional, Partner, Health, Finance... Different contexts, one system.
+                    </p>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="glass rounded-2xl p-8 hover:scale-105 transition-transform scroll-animate">
+                    <div class="text-4xl mb-4">🔐</div>
+                    <h3 class="text-xl font-bold mb-3">Your Data</h3>
+                    <p class="text-gray-400">
+                        Runs locally. Post-quantum encryption. You own it. Nobody else sees it.
+                    </p>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="glass rounded-2xl p-8 hover:scale-105 transition-transform scroll-animate">
+                    <div class="text-4xl mb-4">🤝</div>
+                    <h3 class="text-xl font-bold mb-3">Agent Mesh</h3>
+                    <p class="text-gray-400">
+                        Your agent talks to other agents. Coordinate with family and team effortlessly.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Integrations Section -->
+    <section id="integrations" class="py-24 relative overflow-hidden">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-12 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    Connects to Your <span class="gradient-text">Digital Life</span>
+                </h2>
+                <p class="text-xl text-gray-400">
+                    One agent. All your platforms. Seamless integration.
+                </p>
+            </div>
+
+            <!-- Scrolling logos -->
+            <div class="relative scroll-animate">
+                <!-- Gradient fade edges -->
+                <div class="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#0f0f1a] to-transparent z-10"></div>
+                <div class="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#0f0f1a] to-transparent z-10"></div>
+
+                <!-- First row - scrolling left -->
+                <div class="flex space-x-8 mb-8 animate-scroll-left">
+                    <div class="flex space-x-8">
+                        <!-- Gmail -->
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <svg class="w-10 h-10" viewBox="0 0 24 24" fill="currentColor">
+                                <path fill="#EA4335" d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/>
+                            </svg>
+                            <span class="font-semibold text-lg">Gmail</span>
+                        </div>
+                        <!-- Google Calendar -->
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <svg class="w-10 h-10" viewBox="0 0 24 24">
+                                <path fill="#4285F4" d="M19.5 4h-3V2.5a.5.5 0 0 0-1 0V4h-7V2.5a.5.5 0 0 0-1 0V4h-3A2.5 2.5 0 0 0 2 6.5v13A2.5 2.5 0 0 0 4.5 22h15a2.5 2.5 0 0 0 2.5-2.5v-13A2.5 2.5 0 0 0 19.5 4zm1.5 15.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5V9h18v10.5z"/>
+                                <path fill="#EA4335" d="M12 18a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
+                            </svg>
+                            <span class="font-semibold text-lg">Calendar</span>
+                        </div>
+                        <!-- Outlook -->
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <svg class="w-10 h-10" viewBox="0 0 24 24">
+                                <path fill="#0078D4" d="M24 7.387v10.478c0 .23-.08.424-.238.576-.158.152-.362.228-.61.228h-8.544v-8.493l3.098 2.166c.108.072.25.108.424.108a.67.67 0 0 0 .424-.108l5.322-3.757a.54.54 0 0 0 .124.802z"/>
+                                <path fill="#0078D4" d="M14.608 5.331V17.2H.75c-.21 0-.39-.073-.538-.22A.728.728 0 0 1 0 16.45V3.862c0-.595.283-1.015.85-1.26l6.547-2.49a.85.85 0 0 1 .283-.051c.253 0 .475.08.665.238l5.89 4.6c.254.184.374.433.374.745v-.312z"/>
+                            </svg>
+                            <span class="font-semibold text-lg">Outlook</span>
+                        </div>
+                        <!-- Slack -->
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <svg class="w-10 h-10" viewBox="0 0 24 24">
+                                <path fill="#E01E5A" d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313z"/>
+                                <path fill="#36C5F0" d="M8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312z"/>
+                                <path fill="#2EB67D" d="M18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.27 0a2.528 2.528 0 0 1-2.522 2.521 2.528 2.528 0 0 1-2.521-2.521V2.522A2.528 2.528 0 0 1 15.164 0a2.528 2.528 0 0 1 2.522 2.522v6.312z"/>
+                                <path fill="#ECB22E" d="M15.164 18.956a2.528 2.528 0 0 1 2.522 2.522A2.528 2.528 0 0 1 15.164 24a2.528 2.528 0 0 1-2.521-2.522v-2.522h2.521zm0-1.27a2.528 2.528 0 0 1-2.521-2.522 2.528 2.528 0 0 1 2.521-2.521h6.314A2.528 2.528 0 0 1 24 15.164a2.528 2.528 0 0 1-2.522 2.522h-6.314z"/>
+                            </svg>
+                            <span class="font-semibold text-lg">Slack</span>
+                        </div>
+                        <!-- Notion -->
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <svg class="w-10 h-10" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.98-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.934zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952l1.448.327s0 .84-1.168.84l-3.22.186c-.094-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.14c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.447-1.632z"/>
+                            </svg>
+                            <span class="font-semibold text-lg">Notion</span>
+                        </div>
+                        <!-- Dropbox -->
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <svg class="w-10 h-10" viewBox="0 0 24 24">
+                                <path fill="#0061FF" d="M12 6.134L6 9.804l6 3.67 6-3.67zm-6 8.402l6 3.67 6-3.67-6-3.67zM6 4.464L0 8.134l6 3.67 6-3.67zm12 0l-6 3.67 6 3.67 6-3.67zM6 18.866l6 3.67 6-3.67-6-3.67z"/>
+                            </svg>
+                            <span class="font-semibold text-lg">Dropbox</span>
+                        </div>
+                        <!-- Banking -->
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <span class="text-4xl">🏦</span>
+                            <span class="font-semibold text-lg">Banking</span>
+                        </div>
+                        <!-- Duplicate for infinite scroll -->
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <svg class="w-10 h-10" viewBox="0 0 24 24" fill="currentColor">
+                                <path fill="#EA4335" d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/>
+                            </svg>
+                            <span class="font-semibold text-lg">Gmail</span>
+                        </div>
+                        <div class="glass rounded-2xl px-8 py-6 flex items-center space-x-4 flex-shrink-0 hover:scale-105 transition-transform">
+                            <svg class="w-10 h-10" viewBox="0 0 24 24">
+                                <path fill="#4285F4" d="M19.5 4h-3V2.5a.5.5 0 0 0-1 0V4h-7V2.5a.5.5 0 0 0-1 0V4h-3A2.5 2.5 0 0 0 2 6.5v13A2.5 2.5 0 0 0 4.5 22h15a2.5 2.5 0 0 0 2.5-2.5v-13A2.5 2.5 0 0 0 19.5 4z"/>
+                            </svg>
+                            <span class="font-semibold text-lg">Calendar</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coming soon text -->
+                <div class="text-center mt-8">
+                    <p class="text-gray-400">
+                        <span class="text-primary-400 font-medium">Coming soon:</span>
+                        WhatsApp, iMessage, Spotify, Uber, Amazon, and 50+ more integrations
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            @keyframes scroll-left {
+                0% { transform: translateX(0); }
+                100% { transform: translateX(-50%); }
+            }
+            .animate-scroll-left {
+                animation: scroll-left 30s linear infinite;
+            }
+            .animate-scroll-left:hover {
+                animation-play-state: paused;
+            }
+        </style>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="py-24 relative overflow-hidden">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-16 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    How It <span class="gradient-text">Works</span>
+                </h2>
+                <p class="text-xl text-gray-400">From chaos to calm in four simple steps</p>
+            </div>
+
+            <!-- Timeline visual -->
+            <div class="relative scroll-animate">
+                <!-- Connecting line (desktop) -->
+                <div class="hidden md:block absolute top-24 left-0 right-0 h-1 bg-gradient-to-r from-primary-500 via-pink-500 to-primary-500 opacity-30"></div>
+
+                <div class="grid md:grid-cols-4 gap-8 relative">
+                    <!-- Step 1 -->
+                    <div class="text-center group">
+                        <div class="relative">
+                            <div class="w-20 h-20 rounded-2xl glass flex items-center justify-center text-4xl mx-auto mb-6 group-hover:scale-110 transition-transform glow-sm">
+                                🔗
+                            </div>
+                            <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-8 h-8 rounded-full gradient-btn flex items-center justify-center text-sm font-bold">
+                                1
+                            </div>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 mt-4">Connect</h3>
+                        <p class="text-gray-400">Link Gmail, Calendar, and more. Takes 2 minutes.</p>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="text-center group">
+                        <div class="relative">
+                            <div class="w-20 h-20 rounded-2xl glass flex items-center justify-center text-4xl mx-auto mb-6 group-hover:scale-110 transition-transform glow-sm">
+                                🧠
+                            </div>
+                            <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-8 h-8 rounded-full gradient-btn flex items-center justify-center text-sm font-bold">
+                                2
+                            </div>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 mt-4">Learn</h3>
+                        <p class="text-gray-400">Agent watches and learns. No forms to fill.</p>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="text-center group">
+                        <div class="relative">
+                            <div class="w-20 h-20 rounded-2xl glass flex items-center justify-center text-4xl mx-auto mb-6 group-hover:scale-110 transition-transform glow-sm">
+                                ⚡
+                            </div>
+                            <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-8 h-8 rounded-full gradient-btn flex items-center justify-center text-sm font-bold">
+                                3
+                            </div>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 mt-4">Automate</h3>
+                        <p class="text-gray-400">Agent handles 99%. You approve what matters.</p>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div class="text-center group">
+                        <div class="relative">
+                            <div class="w-20 h-20 rounded-2xl glass flex items-center justify-center text-4xl mx-auto mb-6 group-hover:scale-110 transition-transform glow-sm">
+                                ✨
+                            </div>
+                            <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-8 h-8 rounded-full gradient-btn flex items-center justify-center text-sm font-bold">
+                                4
+                            </div>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 mt-4">Live</h3>
+                        <p class="text-gray-400">Focus on family, creativity, and what matters.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo preview -->
+            <div class="mt-16 text-center scroll-animate">
+                <div class="glass rounded-2xl p-8 max-w-2xl mx-auto">
+                    <p class="text-gray-300 mb-4">
+                        <span class="text-primary-400 font-semibold">Example:</span> Your agent drafts a reply to your boss,
+                        schedules the meeting they requested, and reminds you about your kid's recital—all before you finish your coffee.
+                    </p>
+                    <div class="flex items-center justify-center gap-2 text-sm text-gray-500">
+                        <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                        Agent working in background
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Understanding Meter Section -->
+    <section class="py-24 relative">
+        <div class="max-w-4xl mx-auto px-4">
+            <div class="text-center mb-16 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    Watch Your Agent Get <span class="gradient-text">Smarter</span>
+                </h2>
+            </div>
+
+            <div class="glass rounded-3xl p-8 md:p-12 scroll-animate">
+                <!-- Circular Progress -->
+                <div class="flex justify-center mb-12">
+                    <div class="relative w-48 h-48">
+                        <svg class="w-full h-full transform -rotate-90">
+                            <circle cx="96" cy="96" r="88" fill="none" stroke="rgba(139, 92, 246, 0.2)" stroke-width="12"/>
+                            <circle cx="96" cy="96" r="88" fill="none" stroke="url(#gradient)" stroke-width="12"
+                                    stroke-dasharray="553" stroke-dashoffset="122" stroke-linecap="round"/>
+                            <defs>
+                                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#8b5cf6"/>
+                                    <stop offset="100%" stop-color="#ec4899"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center">
+                            <span class="text-4xl font-bold">78%</span>
+                            <span class="text-gray-400 text-sm">Understanding You</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress Bars -->
+                <div class="space-y-6">
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <span class="text-gray-300">Email Patterns</span>
+                            <span class="text-primary-400">94%</span>
+                        </div>
+                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div class="h-full gradient-btn rounded-full progress-bar" style="width: 94%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <span class="text-gray-300">Calendar Preferences</span>
+                            <span class="text-primary-400">67%</span>
+                        </div>
+                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div class="h-full gradient-btn rounded-full progress-bar" style="width: 67%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <span class="text-gray-300">Relationships</span>
+                            <span class="text-primary-400">52%</span>
+                        </div>
+                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div class="h-full gradient-btn rounded-full progress-bar" style="width: 52%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-2">
+                            <span class="text-gray-300">Work Style</span>
+                            <span class="text-primary-400">73%</span>
+                        </div>
+                        <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div class="h-full gradient-btn rounded-full progress-bar" style="width: 73%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-center text-gray-400 mt-8">
+                    The more you use it, the better it gets.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Social Proof Section -->
+    <section class="py-24 relative">
+        <div class="max-w-5xl mx-auto px-4">
+            <div class="text-center mb-16 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    What Early Users <span class="gradient-text">Say</span>
+                </h2>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8 scroll-animate">
+                <!-- Testimonial 1 -->
+                <div class="glass rounded-2xl p-8">
+                    <div class="flex items-center mb-4">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-primary-400 to-pink-500 flex items-center justify-center text-xl">
+                            S
+                        </div>
+                        <div class="ml-4">
+                            <div class="font-semibold">Sarah</div>
+                            <div class="text-gray-400 text-sm">Founder</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-300 italic">
+                        "It's like having a chief of staff for my life. I got 3 hours back every day."
+                    </p>
+                    <div class="flex mt-4 text-yellow-400">
+                        ★★★★★
+                    </div>
+                </div>
+
+                <!-- Testimonial 2 -->
+                <div class="glass rounded-2xl p-8">
+                    <div class="flex items-center mb-4">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-primary-500 flex items-center justify-center text-xl">
+                            M
+                        </div>
+                        <div class="ml-4">
+                            <div class="font-semibold">Mike</div>
+                            <div class="text-gray-400 text-sm">Engineer</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-300 italic">
+                        "The TikTok algorithm, but for productivity. It actually learns what I need."
+                    </p>
+                    <div class="flex mt-4 text-yellow-400">
+                        ★★★★★
+                    </div>
+                </div>
+
+                <!-- Testimonial 3 -->
+                <div class="glass rounded-2xl p-8">
+                    <div class="flex items-center mb-4">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center text-xl">
+                            P
+                        </div>
+                        <div class="ml-4">
+                            <div class="font-semibold">Priya</div>
+                            <div class="text-gray-400 text-sm">Lawyer</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-300 italic">
+                        "Finally, an AI that respects my privacy. Everything runs locally."
+                    </p>
+                    <div class="flex mt-4 text-yellow-400">
+                        ★★★★★
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Security & Privacy Section -->
+    <section class="py-24 relative">
+        <div class="max-w-5xl mx-auto px-4">
+            <div class="text-center mb-16 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    Built <span class="gradient-text">Different</span>
+                </h2>
+                <p class="text-xl text-gray-400">
+                    Privacy-First. Local-First. Future-Proof.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12 scroll-animate">
+                <div class="glass rounded-2xl p-6 text-center hover:scale-105 transition-transform">
+                    <div class="text-4xl mb-3">🔐</div>
+                    <div class="text-lg font-bold mb-1">Post-Quantum</div>
+                    <div class="text-gray-400 text-sm">Encryption</div>
+                </div>
+                <div class="glass rounded-2xl p-6 text-center hover:scale-105 transition-transform">
+                    <div class="text-4xl mb-3">💻</div>
+                    <div class="text-lg font-bold mb-1">Local-First</div>
+                    <div class="text-gray-400 text-sm">Your device, your data</div>
+                </div>
+                <div class="glass rounded-2xl p-6 text-center hover:scale-105 transition-transform">
+                    <div class="text-4xl mb-3">🚫</div>
+                    <div class="text-lg font-bold mb-1">Zero Tracking</div>
+                    <div class="text-gray-400 text-sm">We don't see your data</div>
+                </div>
+                <div class="glass rounded-2xl p-6 text-center hover:scale-105 transition-transform">
+                    <div class="text-4xl mb-3">📤</div>
+                    <div class="text-lg font-bold mb-1">Full Export</div>
+                    <div class="text-gray-400 text-sm">Take it all, anytime</div>
+                </div>
+            </div>
+
+            <div class="text-center scroll-animate">
+                <p class="text-gray-400 max-w-2xl mx-auto">
+                    QuantumLife runs on your machine. Your data never leaves your device unless you want it to.
+                    End-to-end encryption protects everything, even from us.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="py-24 relative">
+        <div class="max-w-5xl mx-auto px-4">
+            <div class="text-center mb-16 scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    Simple <span class="gradient-text">Pricing</span>
+                </h2>
+                <p class="text-xl text-gray-400">Coming soon</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8 scroll-animate">
+                <!-- Free -->
+                <div class="glass rounded-2xl p-8 relative">
+                    <h3 class="text-2xl font-bold mb-2">Free</h3>
+                    <div class="text-4xl font-bold mb-6">$0<span class="text-lg text-gray-400 font-normal">/mo</span></div>
+                    <ul class="space-y-3 text-gray-300 mb-8">
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Core agent
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            1 space connection
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Basic learning
+                        </li>
+                    </ul>
+                    <button class="w-full py-3 rounded-xl border border-white/20 hover:bg-white/10 transition-colors">
+                        Start Free
+                    </button>
+                </div>
+
+                <!-- Pro -->
+                <div class="glass rounded-2xl p-8 relative border-2 border-primary-500 glow-sm">
+                    <div class="absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 gradient-btn rounded-full text-sm font-medium">
+                        Popular
+                    </div>
+                    <h3 class="text-2xl font-bold mb-2">Pro</h3>
+                    <div class="text-4xl font-bold mb-6">$9<span class="text-lg text-gray-400 font-normal">/mo</span></div>
+                    <ul class="space-y-3 text-gray-300 mb-8">
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Everything in Free
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Unlimited spaces
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Priority AI processing
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Advanced patterns
+                        </li>
+                    </ul>
+                    <button class="w-full py-3 rounded-xl gradient-btn text-white font-medium hover:opacity-90 transition-opacity">
+                        Coming Soon
+                    </button>
+                </div>
+
+                <!-- Family -->
+                <div class="glass rounded-2xl p-8 relative">
+                    <h3 class="text-2xl font-bold mb-2">Family</h3>
+                    <div class="text-4xl font-bold mb-6">$19<span class="text-lg text-gray-400 font-normal">/mo</span></div>
+                    <ul class="space-y-3 text-gray-300 mb-8">
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Everything in Pro
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            5 family members
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Family mesh network
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-green-400 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Shared calendar sync
+                        </li>
+                    </ul>
+                    <button class="w-full py-3 rounded-xl border border-white/20 hover:bg-white/10 transition-colors">
+                        Coming Soon
+                    </button>
+                </div>
+            </div>
+
+            <p class="text-center text-gray-400 mt-8 scroll-animate">
+                Join waitlist for early access pricing 🎁
+            </p>
+        </div>
+    </section>
+
+    <!-- Final CTA Section -->
+    <section class="py-24 relative">
+        <div class="max-w-3xl mx-auto px-4 text-center">
+            <div class="scroll-animate">
+                <h2 class="text-4xl md:text-5xl font-bold mb-6">
+                    Ready to meet your <span class="gradient-text">Digital Twin</span>?
+                </h2>
+
+                <form id="footer-waitlist-form" class="flex flex-col sm:flex-row gap-4 justify-center max-w-lg mx-auto mb-6">
+                    <input
+                        type="email"
+                        name="email"
+                        placeholder="Enter your email"
+                        required
+                        class="flex-1 px-6 py-4 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/50 transition-all"
+                    >
+                    <button
+                        type="submit"
+                        class="px-8 py-4 rounded-xl gradient-btn text-white font-semibold hover:opacity-90 transition-all transform hover:scale-105 glow-sm"
+                    >
+                        Join Waitlist
+                    </button>
+                </form>
+
+                <p class="text-gray-400 text-sm">
+                    We'll notify you when we launch. No spam. Unsubscribe anytime.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 border-t border-white/10">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
+                <!-- Logo -->
+                <div class="col-span-2 md:col-span-1">
+                    <a href="/" class="flex items-center space-x-2 mb-4">
+                        <svg class="w-8 h-8 text-primary-500" viewBox="0 0 32 32" fill="currentColor">
+                            <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="16" cy="16" r="8" fill="currentColor" opacity="0.3"/>
+                            <circle cx="16" cy="16" r="4" fill="currentColor"/>
+                        </svg>
+                        <span class="text-xl font-bold">QuantumLife</span>
+                    </a>
+                    <p class="text-gray-400 text-sm">
+                        Your life on autopilot.
+                    </p>
+                </div>
+
+                <!-- Product -->
+                <div>
+                    <h4 class="font-semibold mb-4">Product</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#features" class="hover:text-white transition-colors">Features</a></li>
+                        <li><a href="#pricing" class="hover:text-white transition-colors">Pricing</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Roadmap</a></li>
+                        <li><a href="/docs" class="hover:text-white transition-colors">Docs</a></li>
+                    </ul>
+                </div>
+
+                <!-- Company -->
+                <div>
+                    <h4 class="font-semibold mb-4">Company</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-white transition-colors">About</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Blog</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Careers</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Contact</a></li>
+                    </ul>
+                </div>
+
+                <!-- Legal -->
+                <div>
+                    <h4 class="font-semibold mb-4">Legal</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="/landing/privacy.html" class="hover:text-white transition-colors">Privacy</a></li>
+                        <li><a href="/landing/terms.html" class="hover:text-white transition-colors">Terms</a></li>
+                        <li><a href="#" class="hover:text-white transition-colors">Security</a></li>
+                    </ul>
+                </div>
+
+                <!-- Connect -->
+                <div>
+                    <h4 class="font-semibold mb-4">Connect</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li>
+                            <a href="#" class="hover:text-white transition-colors flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                                Twitter
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="hover:text-white transition-colors flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z"/></svg>
+                                Discord
+                            </a>
+                        </li>
+                        <li>
+                            <a href="mailto:hello@quantumlife.ai" class="hover:text-white transition-colors flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                                Email
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="border-t border-white/10 pt-8 text-center text-gray-400 text-sm">
+                <p>&copy; 2024 QuantumLife. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <!-- JavaScript -->
+    <script>
+        // Mobile menu toggle
+        document.getElementById('mobile-menu-btn').addEventListener('click', function() {
+            const menu = document.getElementById('mobile-menu');
+            menu.classList.toggle('hidden');
+        });
+
+        // Waitlist form handler
+        async function handleWaitlistSubmit(e) {
+            e.preventDefault();
+            const email = e.target.email.value;
+            const button = e.target.querySelector('button');
+            const originalText = button.innerText;
+
+            try {
+                button.disabled = true;
+                button.innerText = 'Joining...';
+
+                const response = await fetch('/api/v1/waitlist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, source: 'landing' })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast('🎉 You\'re on the list! Position: #' + data.position, 'success');
+                    e.target.reset();
+                    updateWaitlistCount();
+                } else if (response.status === 409) {
+                    showToast('You\'re already on the waitlist!', 'info');
+                } else {
+                    showToast('❌ ' + (data.error || 'Something went wrong'), 'error');
+                }
+            } catch (err) {
+                showToast('❌ Network error. Please try again.', 'error');
+            } finally {
+                button.disabled = false;
+                button.innerText = originalText;
+            }
+        }
+
+        // Attach form handlers
+        document.getElementById('hero-waitlist-form').addEventListener('submit', handleWaitlistSubmit);
+        document.getElementById('footer-waitlist-form').addEventListener('submit', handleWaitlistSubmit);
+
+        // Fetch and display waitlist count
+        async function updateWaitlistCount() {
+            try {
+                const response = await fetch('/api/v1/waitlist/count');
+                const data = await response.json();
+                const count = data.count || 0;
+                const formattedCount = count.toLocaleString();
+                document.querySelectorAll('.waitlist-count').forEach(el => {
+                    el.innerText = formattedCount;
+                });
+            } catch (err) {
+                console.log('Failed to fetch waitlist count');
+            }
+        }
+
+        // Toast notifications
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const bgColor = type === 'success' ? 'bg-green-500' :
+                           type === 'error' ? 'bg-red-500' :
+                           'bg-primary-500';
+
+            toast.className = `${bgColor} text-white px-6 py-3 rounded-lg shadow-lg animate-slide-up`;
+            toast.innerText = message;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // Scroll animations
+        function initScrollAnimations() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            document.querySelectorAll('.scroll-animate').forEach(el => {
+                observer.observe(el);
+            });
+        }
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    // Close mobile menu if open
+                    document.getElementById('mobile-menu').classList.add('hidden');
+                }
+            });
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            updateWaitlistCount();
+            initScrollAnimations();
+        });
+    </script>
+</body>
+</html>

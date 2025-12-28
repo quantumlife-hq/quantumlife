@@ -44,6 +44,33 @@ const (
 	PatternFocusTime    PatternType = "focus_time"    // "Deep work 9-11am"
 	PatternCollabTime   PatternType = "collab_time"   // "Open for meetings 2-5pm"
 	PatternWeekendHabit PatternType = "weekend_habit" // "Doesn't check email weekends"
+
+	// Communication patterns (NEW)
+	PatternEmailLength    PatternType = "email_length"    // "Writes short emails to team, long to clients"
+	PatternFormalityLevel PatternType = "formality_level" // "Formal with boss, casual with peers"
+	PatternResponseStyle  PatternType = "response_style"  // "Uses bullet points for action items"
+
+	// Productivity patterns (NEW)
+	PatternPeakHours      PatternType = "peak_hours"       // "Most productive 9-11am"
+	PatternMeetingFatigue PatternType = "meeting_fatigue"  // "Declines after 3 meetings/day"
+	PatternBatchBehavior  PatternType = "batch_behavior"   // "Processes email in batches"
+	PatternDeepWork       PatternType = "deep_work"        // "Blocks 2-hour chunks for focus"
+
+	// Decision patterns (NEW)
+	PatternDecisionSpeed   PatternType = "decision_speed"   // "Quick decisions on small matters"
+	PatternDelegationStyle PatternType = "delegation_style" // "Delegates admin tasks"
+	PatternProcrastination PatternType = "procrastination"  // "Delays expense reports"
+	PatternUrgencyBias     PatternType = "urgency_bias"     // "Responds to urgent over important"
+
+	// Relationship patterns (NEW)
+	PatternInitiator  PatternType = "initiator"  // "Usually initiates with family"
+	PatternResponder  PatternType = "responder"  // "Waits for boss to reach out"
+	PatternMaintainer PatternType = "maintainer" // "Regular check-ins with mentor"
+
+	// Context patterns (NEW)
+	PatternLocationBased PatternType = "location_based" // "Different behavior at home vs office"
+	PatternDeviceBased   PatternType = "device_based"   // "Mobile = quick responses, Desktop = long"
+	PatternSeasonBased   PatternType = "season_based"   // "Q4 = very busy"
 )
 
 // Pattern represents a detected behavioral pattern

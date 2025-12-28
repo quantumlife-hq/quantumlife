@@ -833,5 +833,451 @@ ws.onmessage = (event) => {
 
 ---
 
+## Learning Endpoints
+
+### Get Learning Statistics
+
+```http
+GET /api/v1/learning/stats
+```
+
+**Response:**
+```json
+{
+  "total_signals": 1250,
+  "total_patterns": 45,
+  "signals_today": 23,
+  "patterns_by_type": {
+    "time": 12,
+    "sender": 18,
+    "content": 10,
+    "hat": 5
+  },
+  "model_confidence": 0.78
+}
+```
+
+### Get Detected Patterns
+
+```http
+GET /api/v1/learning/patterns
+```
+
+**Query Parameters:**
+- `type` (string) - Pattern type filter
+- `min_confidence` (float) - Minimum confidence (0.0-1.0)
+- `limit` (int) - Max results (default: 50)
+
+**Response:**
+```json
+{
+  "patterns": [
+    {
+      "id": "pattern-001",
+      "type": "sender",
+      "description": "Emails from school.edu are usually high priority",
+      "confidence": 0.85,
+      "occurrences": 47,
+      "last_seen": "2025-01-15T10:00:00Z"
+    }
+  ]
+}
+```
+
+### Get User Preferences
+
+```http
+GET /api/v1/learning/preferences
+```
+
+**Response:**
+```json
+{
+  "preferences": {
+    "email_processing_time": "09:00-10:00",
+    "priority_domains": ["work.com", "school.edu"],
+    "auto_archive_low_priority": true,
+    "preferred_hat_for_newsletters": "personal"
+  }
+}
+```
+
+### Record Signal (Internal)
+
+```http
+POST /api/v1/learning/signal
+Content-Type: application/json
+
+{
+  "type": "item_open",
+  "item_id": "item-001",
+  "hat_id": "hat-001",
+  "metadata": {
+    "dwell_time_ms": 5000
+  }
+}
+```
+
+---
+
+## Proactive Endpoints
+
+### Get Recommendations
+
+```http
+GET /api/v1/recommendations
+```
+
+**Query Parameters:**
+- `hat_id` (uuid) - Filter by hat
+- `type` (string) - Filter by type (action, delegation, reminder, insight)
+- `status` (string) - Filter by status (pending, accepted, dismissed)
+- `limit` (int) - Max results (default: 20)
+
+**Response:**
+```json
+{
+  "recommendations": [
+    {
+      "id": "rec-001",
+      "type": "action",
+      "title": "Respond to urgent email",
+      "description": "Email from boss@work.com has been waiting 2 hours",
+      "confidence": 0.92,
+      "hat_id": "hat-professional",
+      "item_id": "item-456",
+      "created_at": "2025-01-15T10:00:00Z"
+    }
+  ],
+  "total": 5
+}
+```
+
+### Accept Recommendation
+
+```http
+POST /api/v1/recommendations/{id}/accept
+```
+
+### Dismiss Recommendation
+
+```http
+POST /api/v1/recommendations/{id}/dismiss
+Content-Type: application/json
+
+{
+  "reason": "not_relevant"
+}
+```
+
+### Get Nudges
+
+```http
+GET /api/v1/nudges
+```
+
+**Query Parameters:**
+- `urgency` (string) - Filter by urgency (low, medium, high, critical)
+- `status` (string) - Filter by status (pending, delivered, dismissed)
+
+**Response:**
+```json
+{
+  "nudges": [
+    {
+      "id": "nudge-001",
+      "title": "Time for your daily email review",
+      "message": "You usually check emails around this time",
+      "urgency": "medium",
+      "scheduled_for": "2025-01-15T09:00:00Z",
+      "hat_id": "hat-professional"
+    }
+  ]
+}
+```
+
+### Dismiss Nudge
+
+```http
+POST /api/v1/nudges/{id}/dismiss
+```
+
+---
+
+## Discovery Endpoints
+
+### List Agents
+
+```http
+GET /api/v1/agents
+```
+
+**Query Parameters:**
+- `type` (string) - Filter by type (builtin, local, remote, mcp, plugin)
+- `status` (string) - Filter by status (active, inactive, maintenance)
+- `capability` (string) - Filter by capability type
+
+**Response:**
+```json
+{
+  "agents": [
+    {
+      "id": "builtin.email",
+      "name": "Email Agent",
+      "description": "Send and manage emails",
+      "type": "builtin",
+      "version": "1.0.0",
+      "status": "active",
+      "capabilities": [
+        {"type": "email_send", "name": "Send Email"},
+        {"type": "email_read", "name": "Read Email"}
+      ],
+      "trust_score": 1.0,
+      "reliability": 0.99,
+      "avg_latency_ms": 150
+    }
+  ],
+  "count": 6
+}
+```
+
+### Get Agent
+
+```http
+GET /api/v1/agents/{id}
+```
+
+### Register Agent
+
+```http
+POST /api/v1/agents
+Content-Type: application/json
+
+{
+  "id": "custom.weather",
+  "name": "Weather Agent",
+  "description": "Get weather information",
+  "type": "plugin",
+  "version": "1.0.0",
+  "capabilities": [
+    {
+      "type": "weather_get",
+      "name": "Get Weather",
+      "description": "Get current weather for a location",
+      "parameters": {
+        "location": {"type": "string", "required": true}
+      }
+    }
+  ],
+  "endpoints": [
+    {"type": "http", "url": "http://localhost:9000/weather"}
+  ]
+}
+```
+
+### Unregister Agent
+
+```http
+DELETE /api/v1/agents/{id}
+```
+
+### List Capabilities
+
+```http
+GET /api/v1/capabilities
+```
+
+**Response:**
+```json
+{
+  "capability_types": [
+    "email_send", "email_read", "email_search",
+    "calendar_book", "calendar_read",
+    "web_search", "web_browse",
+    "text_generate", "summarize"
+  ],
+  "agent_counts": {
+    "email_send": 1,
+    "calendar_book": 1,
+    "text_generate": 1
+  },
+  "total_types": 30
+}
+```
+
+### Discover Capabilities
+
+```http
+POST /api/v1/discover
+Content-Type: application/json
+
+{
+  "intent": "send an email to John",
+  "required_capabilities": ["email_send"],
+  "min_trust_score": 0.5
+}
+```
+
+**Response:**
+```json
+{
+  "matches": [
+    {
+      "agent": {...},
+      "capability": {"type": "email_send", ...},
+      "score": 0.95
+    }
+  ],
+  "count": 1
+}
+```
+
+### Discover Best
+
+```http
+POST /api/v1/discover/best
+Content-Type: application/json
+
+{
+  "intent": "send an email"
+}
+```
+
+**Response:**
+```json
+{
+  "match": {
+    "agent": {...},
+    "capability": {...},
+    "score": 0.95
+  }
+}
+```
+
+### Execute Capability
+
+```http
+POST /api/v1/execute
+Content-Type: application/json
+
+{
+  "agent_id": "builtin.email",
+  "capability": "email_send",
+  "parameters": {
+    "to": "john@example.com",
+    "subject": "Hello",
+    "body": "Hi John!"
+  },
+  "timeout_ms": 30000,
+  "async": false
+}
+```
+
+**Response:**
+```json
+{
+  "id": "exec-001",
+  "status": "success",
+  "result": {
+    "message_id": "msg-123",
+    "sent_at": "2025-01-15T10:00:00Z"
+  },
+  "latency_ms": 1250
+}
+```
+
+### Execute Intent
+
+```http
+POST /api/v1/execute/intent
+Content-Type: application/json
+
+{
+  "intent": "send an email to john@example.com saying hello",
+  "parameters": {},
+  "context": {
+    "hat_id": "hat-professional"
+  }
+}
+```
+
+### Execute Chain
+
+```http
+POST /api/v1/execute/chain
+Content-Type: application/json
+
+{
+  "steps": [
+    {
+      "capability": "web_search",
+      "parameters": {"query": "weather today"}
+    },
+    {
+      "capability": "summarize",
+      "parameters": {"text": "{{previous.result}}"}
+    },
+    {
+      "capability": "email_send",
+      "parameters": {
+        "to": "self",
+        "subject": "Weather Summary",
+        "body": "{{previous.result}}"
+      }
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "id": "chain-001",
+  "status": "success",
+  "steps": [
+    {"step": 0, "status": "success", "result": {...}},
+    {"step": 1, "status": "success", "result": {...}},
+    {"step": 2, "status": "success", "result": {...}}
+  ],
+  "completed_at": "2025-01-15T10:00:05Z"
+}
+```
+
+### Get Execution Result
+
+```http
+GET /api/v1/execute/{id}
+```
+
+### Discovery Statistics
+
+```http
+GET /api/v1/discovery/stats
+```
+
+**Response:**
+```json
+{
+  "registry": {
+    "total_agents": 6,
+    "total_capabilities": 25,
+    "by_type": {"builtin": 6},
+    "by_status": {"active": 6}
+  },
+  "discovery": {
+    "total_queries": 150,
+    "cache_hits": 120,
+    "avg_match_time_ms": 5
+  },
+  "execution": {
+    "total_executions": 89,
+    "success_rate": 0.97,
+    "avg_latency_ms": 450
+  }
+}
+```
+
+---
+
 **API Version:** v1
-**Last Updated:** 2025-01-15
+**Last Updated:** 2025-12-28
