@@ -13,9 +13,11 @@ quantumlife
 # Test artifacts
 *.test
 coverage.out
+coverage_*.out
 
 # Environment (contains secrets)
 .env
+.env.e2e
 
 # Backups (large data)
 backups/
