@@ -12,10 +12,25 @@ import (
 	"github.com/quantumlife/quantumlife/internal/mcp/server"
 )
 
+// CalendarClient defines the interface for Calendar operations used by the server.
+// This interface allows for mocking in unit tests.
+type CalendarClient interface {
+	GetEvents(ctx context.Context, calendarID string, start, end time.Time) ([]calclient.Event, error)
+	GetTodayEvents(ctx context.Context) ([]calclient.Event, error)
+	GetUpcomingEvents(ctx context.Context, days int) ([]calclient.Event, error)
+	GetEvent(ctx context.Context, calendarID, eventID string) (*calclient.Event, error)
+	CreateEvent(ctx context.Context, req calclient.CreateEventRequest) (*calclient.Event, error)
+	QuickAdd(ctx context.Context, calendarID, text string) (*calclient.Event, error)
+	UpdateEvent(ctx context.Context, req calclient.UpdateEventRequest) (*calclient.Event, error)
+	DeleteEvent(ctx context.Context, calendarID, eventID string) error
+	FindFreeTime(ctx context.Context, start, end time.Time, durationMinutes int) ([]calclient.TimeSlot, error)
+	ListCalendars(ctx context.Context) ([]calclient.CalendarInfo, error)
+}
+
 // Server is the Calendar MCP server
 type Server struct {
 	*server.Server
-	client *calclient.Client
+	client CalendarClient
 }
 
 // New creates a new Calendar MCP server from a Calendar client
@@ -23,7 +38,16 @@ func New(client *calclient.Client) *Server {
 	if client == nil {
 		return nil
 	}
+	return newServer(client)
+}
 
+// NewWithMockClient creates a new Calendar MCP server with a mock client for testing.
+func NewWithMockClient(client CalendarClient) *Server {
+	return newServer(client)
+}
+
+// newServer creates a new Calendar MCP server with the given client.
+func newServer(client CalendarClient) *Server {
 	s := &Server{
 		Server: server.New(server.Config{
 			Name:    "calendar",
