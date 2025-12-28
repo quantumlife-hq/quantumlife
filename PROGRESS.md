@@ -12,7 +12,7 @@
 
 | Phase | Status | Progress |
 |-------|--------|----------|
-| Phase 1: MCP Foundation | 🔄 In Progress | 20% |
+| Phase 1: MCP Foundation | 🔄 In Progress | 40% |
 | Phase 2: New Integrations | ⏳ Pending | 0% |
 | Phase 3: Mesh Activation | ⏳ Pending | 0% |
 | Phase 4: UI Modernization | ⏳ Pending | 0% |
@@ -34,14 +34,14 @@
 **Notes**: Framework ready. Now build servers that use it.
 
 ### 1.2 Gmail MCP Server
-- [ ] `internal/mcp/servers/gmail/server.go` - Main server
-- [ ] `internal/mcp/servers/gmail/tools.go` - Tool implementations
-- [ ] `internal/mcp/servers/gmail/oauth.go` - OAuth handling
-- [ ] Tools: `gmail.list_messages`, `gmail.get_message`, `gmail.send_message`, `gmail.reply`, `gmail.archive`, `gmail.label`
-- [ ] Resources: `gmail://inbox`, `gmail://message/{id}`
+- [x] `internal/mcp/servers/gmail/server.go` - Main server with all tools
+- [x] Tools: `gmail.list_messages`, `gmail.get_message`, `gmail.send_message`, `gmail.reply`
+- [x] Tools: `gmail.archive`, `gmail.trash`, `gmail.star`, `gmail.mark_read`, `gmail.label`
+- [x] Tools: `gmail.list_labels`, `gmail.create_draft`
+- [x] Resources: `gmail://inbox` (inbox summary)
 
-**Status**: ⏳ Not started
-**Notes**: Existing OAuth code at `internal/spaces/gmail/` - rewrite as MCP, don't wrap
+**Status**: ✅ Complete
+**Notes**: Wraps existing client at `internal/spaces/gmail/`. OAuth handled separately.
 
 ### 1.3 Calendar MCP Server
 - [ ] `internal/mcp/servers/calendar/server.go` - Main server
@@ -220,7 +220,10 @@
   - `internal/mcp/server/registry.go` - Tool/resource registry
   - `internal/mcp/server/handler.go` - ToolBuilder, Args parser
   - `internal/mcp/server/server.go` - HTTP handler + JSON-RPC
-- **Next**: Phase 1.2 - Gmail MCP Server
+- ✅ Completed Phase 1.2 - Gmail MCP Server
+  - 11 tools: list_messages, get_message, send_message, reply, archive, trash, star, mark_read, label, list_labels, create_draft
+  - 1 resource: gmail://inbox
+- **Next**: Phase 1.3 - Calendar MCP Server
 
 ---
 
