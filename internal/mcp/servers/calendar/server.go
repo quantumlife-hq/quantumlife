@@ -613,7 +613,7 @@ func parseDateTime(s string) (time.Time, bool, error) {
 		return time.Date(now.Year(), now.Month(), now.Day()+1, 9, 0, 0, 0, now.Location()), true, nil
 	}
 
-	return time.Time{}, false, fmt.Errorf("cannot parse datetime: %s (use YYYY-MM-DD HH:MM or YYYY-MM-DD)")
+	return time.Time{}, false, fmt.Errorf("cannot parse datetime: %s (use YYYY-MM-DD HH:MM or YYYY-MM-DD)", s)
 }
 
 func splitAndTrim(s, sep string) []string {

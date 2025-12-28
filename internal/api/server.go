@@ -21,6 +21,7 @@ import (
 	"github.com/quantumlife/quantumlife/internal/identity"
 	"github.com/quantumlife/quantumlife/internal/learning"
 	"github.com/quantumlife/quantumlife/internal/memory"
+	"github.com/quantumlife/quantumlife/internal/mesh"
 	"github.com/quantumlife/quantumlife/internal/notifications"
 	"github.com/quantumlife/quantumlife/internal/proactive"
 	"github.com/quantumlife/quantumlife/internal/spaces/calendar"
@@ -70,6 +71,9 @@ type Server struct {
 	// MCP
 	mcpAPI *MCPAPI
 
+	// Mesh (A2A networking)
+	meshHub *mesh.Hub
+
 	// Spaces (for OAuth)
 	gmailSpace    *gmail.Space
 	calendarSpace *calendar.Space
@@ -95,6 +99,7 @@ type Config struct {
 	ExecutionEngine     *discovery.ExecutionEngine
 	NotificationService *notifications.Service
 	MCPAPI              *MCPAPI
+	MeshHub             *mesh.Hub
 	GmailSpace          *gmail.Space
 	CalendarSpace       *calendar.Space
 }
@@ -124,6 +129,7 @@ func New(cfg Config) *Server {
 		executionEngine:     cfg.ExecutionEngine,
 		notificationService: cfg.NotificationService,
 		mcpAPI:              mcpAPI,
+		meshHub:             cfg.MeshHub,
 		gmailSpace:          cfg.GmailSpace,
 		calendarSpace:       cfg.CalendarSpace,
 		wsHub:               NewWebSocketHub(),
@@ -157,6 +163,11 @@ func (s *Server) registerConnectedMCPServers() {
 // MCPAPI returns the MCP API handler for registering servers
 func (s *Server) MCPAPI() *MCPAPI {
 	return s.mcpAPI
+}
+
+// MeshHub returns the mesh hub for A2A networking
+func (s *Server) MeshHub() *mesh.Hub {
+	return s.meshHub
 }
 
 // setupRouter configures all routes
@@ -281,6 +292,12 @@ func (s *Server) setupRouter() {
 		// MCP API (always available)
 		if s.mcpAPI != nil {
 			s.mcpAPI.RegisterRoutes(r)
+		}
+
+		// Mesh API (if hub is configured)
+		if s.meshHub != nil {
+			meshAPI := NewMeshAPI(s.meshHub)
+			meshAPI.RegisterRoutes(r)
 		}
 	})
 

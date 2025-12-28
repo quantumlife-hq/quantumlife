@@ -16,13 +16,15 @@ import (
 	"github.com/quantumlife/quantumlife/internal/embeddings"
 	"github.com/quantumlife/quantumlife/internal/identity"
 	"github.com/quantumlife/quantumlife/internal/llm"
+	"github.com/quantumlife/quantumlife/internal/mesh"
 	"github.com/quantumlife/quantumlife/internal/storage"
 	"github.com/quantumlife/quantumlife/internal/vectors"
 )
 
 var (
-	dataDir string
-	port    int
+	dataDir  string
+	port     int
+	meshPort int
 )
 
 func main() {
@@ -37,6 +39,7 @@ func main() {
 
 	rootCmd.Flags().StringVar(&dataDir, "data-dir", defaultDataDir, "Data directory")
 	rootCmd.Flags().IntVar(&port, "port", 8080, "HTTP server port")
+	rootCmd.Flags().IntVar(&meshPort, "mesh-port", 8090, "Mesh WebSocket port for A2A")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -128,6 +131,41 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Create mesh hub for A2A networking
+	var meshHub *mesh.Hub
+	if you != nil {
+		// Generate key pair for agent card
+		keyPair, err := mesh.GenerateAgentKeyPair()
+		if err != nil {
+			fmt.Printf("⚠️  Failed to generate mesh keys: %v\n", err)
+		} else {
+			// Create agent card
+			endpoint := fmt.Sprintf("http://localhost:%d", meshPort)
+			capabilities := []mesh.AgentCapability{
+				mesh.CapabilityCalendar,
+				mesh.CapabilityEmail,
+				mesh.CapabilityNotes,
+				mesh.CapabilityReminders,
+			}
+			agentCard := mesh.NewAgentCard(you.ID, you.Name, endpoint, keyPair, capabilities)
+			if err := agentCard.Sign(keyPair.PrivateKey); err != nil {
+				fmt.Printf("⚠️  Failed to sign agent card: %v\n", err)
+			} else {
+				// Create and start mesh hub
+				meshHub = mesh.NewHub(mesh.HubConfig{
+					AgentCard: agentCard,
+					KeyPair:   keyPair,
+				})
+				if err := meshHub.Start(fmt.Sprintf(":%d", meshPort)); err != nil {
+					fmt.Printf("⚠️  Failed to start mesh hub: %v\n", err)
+					meshHub = nil
+				} else {
+					fmt.Printf("🌐 Mesh hub started on port %d\n", meshPort)
+				}
+			}
+		}
+	}
+
 	// Create and start API server
 	server := api.New(api.Config{
 		Port:            port,
@@ -135,6 +173,7 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		DB:              db,
 		Identity:        you,
 		IdentityManager: identityMgr,
+		MeshHub:         meshHub,
 	})
 
 	// Handle shutdown
@@ -144,6 +183,9 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		<-sigCh
 
 		fmt.Println("\n🛑 Shutting down...")
+		if meshHub != nil {
+			meshHub.Stop()
+		}
 		ag.Stop()
 		server.Stop(context.Background())
 		cancel()
