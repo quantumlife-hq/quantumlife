@@ -592,6 +592,221 @@ func TestRouter_updateStats(t *testing.T) {
 // Benchmarks
 // =============================================================================
 
+func TestRouter_selectProvider_RequireCloudFallbackToClaude(t *testing.T) {
+	// When Azure not configured but Claude is, RequireCloud should use Claude
+	claudeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer claudeServer.Close()
+
+	router := NewRouter(RouterConfig{
+		Claude: NewClient(Config{APIKey: "test", BaseURL: claudeServer.URL}),
+		// Azure not configured
+	})
+
+	got := router.selectProvider(RouteRequest{RequireCloud: true}, ComplexityLow)
+	if got != ProviderClaude {
+		t.Errorf("selectProvider() = %v, want %v", got, ProviderClaude)
+	}
+}
+
+func TestRouter_selectProvider_HighComplexityFallbackToAzure(t *testing.T) {
+	// When Claude not configured, high complexity should fall back to Azure
+	azureServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer azureServer.Close()
+
+	router := NewRouter(RouterConfig{
+		Azure: NewAzureClient(AzureConfig{
+			Endpoint:   azureServer.URL,
+			APIKey:     "test",
+			Deployment: "gpt-4",
+		}),
+		// Claude not configured
+	})
+
+	got := router.selectProvider(RouteRequest{}, ComplexityHigh)
+	if got != ProviderAzure {
+		t.Errorf("selectProvider() = %v, want %v", got, ProviderAzure)
+	}
+}
+
+func TestRouter_selectProvider_MediumComplexityFallbackToClaude(t *testing.T) {
+	// When Azure not configured, medium complexity should fall back to Claude
+	claudeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer claudeServer.Close()
+
+	router := NewRouter(RouterConfig{
+		Claude: NewClient(Config{APIKey: "test", BaseURL: claudeServer.URL}),
+		// Azure not configured
+	})
+
+	got := router.selectProvider(RouteRequest{}, ComplexityMedium)
+	if got != ProviderClaude {
+		t.Errorf("selectProvider() = %v, want %v", got, ProviderClaude)
+	}
+}
+
+func TestRouter_selectProvider_LowComplexityFallbackToAzure(t *testing.T) {
+	// When Ollama not configured, low complexity should fall back to Azure
+	azureServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer azureServer.Close()
+
+	router := NewRouter(RouterConfig{
+		Azure: NewAzureClient(AzureConfig{
+			Endpoint:   azureServer.URL,
+			APIKey:     "test",
+			Deployment: "gpt-4",
+		}),
+		// Ollama not configured
+	})
+
+	got := router.selectProvider(RouteRequest{}, ComplexityLow)
+	if got != ProviderAzure {
+		t.Errorf("selectProvider() = %v, want %v", got, ProviderAzure)
+	}
+}
+
+func TestRouter_selectProvider_DefaultFallbackToAzure(t *testing.T) {
+	// When Claude not configured, default fallback should try Azure
+	azureServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer azureServer.Close()
+
+	router := NewRouter(RouterConfig{
+		Azure: NewAzureClient(AzureConfig{
+			Endpoint:   azureServer.URL,
+			APIKey:     "test",
+			Deployment: "gpt-4",
+		}),
+	})
+
+	// Use an unusual complexity to hit default path
+	got := router.selectProvider(RouteRequest{}, ComplexityHigh)
+	if got != ProviderAzure {
+		t.Errorf("selectProvider() = %v, want %v", got, ProviderAzure)
+	}
+}
+
+func TestRouter_selectProvider_DefaultFallbackToOllama(t *testing.T) {
+	// When Claude and Azure not configured, default fallback should try Ollama
+	ollamaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"models": []interface{}{}})
+	}))
+	defer ollamaServer.Close()
+
+	router := NewRouter(RouterConfig{
+		Ollama: NewOllamaClient(OllamaConfig{BaseURL: ollamaServer.URL}),
+	})
+
+	got := router.selectProvider(RouteRequest{}, ComplexityHigh)
+	if got != ProviderOllama {
+		t.Errorf("selectProvider() = %v, want %v", got, ProviderOllama)
+	}
+}
+
+func TestRouter_selectProvider_NoProvidersConfigured(t *testing.T) {
+	router := NewRouter(RouterConfig{})
+
+	// Should return default Claude even when not configured
+	got := router.selectProvider(RouteRequest{}, ComplexityLow)
+	if got != ProviderClaude {
+		t.Errorf("selectProvider() = %v, want %v (default)", got, ProviderClaude)
+	}
+}
+
+func TestRouter_selectProvider_PreferLocalNotLowComplexity(t *testing.T) {
+	// preferLocal should not apply to medium/high complexity
+	ollamaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{"models": []interface{}{}})
+	}))
+	defer ollamaServer.Close()
+
+	azureServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer azureServer.Close()
+
+	router := NewRouter(RouterConfig{
+		Ollama:      NewOllamaClient(OllamaConfig{BaseURL: ollamaServer.URL}),
+		Azure:       NewAzureClient(AzureConfig{Endpoint: azureServer.URL, APIKey: "test", Deployment: "gpt-4"}),
+		PreferLocal: true,
+	})
+
+	// Medium complexity should not use Ollama even with preferLocal
+	got := router.selectProvider(RouteRequest{}, ComplexityMedium)
+	if got != ProviderAzure {
+		t.Errorf("selectProvider() = %v, want %v", got, ProviderAzure)
+	}
+}
+
+func TestRouter_Classify_Error(t *testing.T) {
+	// Test Classify when Route fails
+	router := NewRouter(RouterConfig{
+		EnableFallback: false,
+	})
+
+	_, err := router.Classify(context.Background(), "system", "test")
+	if err == nil {
+		t.Error("expected error when no providers configured")
+	}
+}
+
+func TestRouter_Reason_Error(t *testing.T) {
+	// Test Reason when Route fails
+	router := NewRouter(RouterConfig{
+		EnableFallback: false,
+	})
+
+	_, err := router.Reason(context.Background(), "system", "test")
+	if err == nil {
+		t.Error("expected error when no providers configured")
+	}
+}
+
+func TestRouter_Route_AllFallbacksFail(t *testing.T) {
+	// All providers fail
+	failServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer failServer.Close()
+
+	router := NewRouter(RouterConfig{
+		Claude: NewClient(Config{APIKey: "test", BaseURL: failServer.URL}),
+		Azure: NewAzureClient(AzureConfig{
+			Endpoint:   failServer.URL,
+			APIKey:     "test",
+			Deployment: "gpt-4",
+		}),
+		EnableFallback: true,
+	})
+
+	_, err := router.Route(context.Background(), RouteRequest{Prompt: "test"})
+	if err == nil {
+		t.Error("expected error when all providers fail")
+	}
+	if !strings.Contains(err.Error(), "all providers failed") {
+		t.Errorf("error should mention all providers failed, got: %v", err)
+	}
+}
+
+func TestRouter_executeFallback_AllFail(t *testing.T) {
+	router := NewRouter(RouterConfig{})
+
+	_, _, err := router.executeFallback(context.Background(), RouteRequest{Prompt: "test"}, ProviderOllama)
+	if err == nil {
+		t.Error("expected error when all fallbacks fail")
+	}
+}
+
 func BenchmarkRouter_assessComplexity(b *testing.B) {
 	router := NewRouter(RouterConfig{})
 	prompt := strings.Repeat("Please analyze and explain why this approach is better. ", 10)

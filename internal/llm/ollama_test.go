@@ -459,6 +459,133 @@ func TestOllamaClient_ListModels_APIError(t *testing.T) {
 // Benchmarks
 // =============================================================================
 
+func TestOllamaClient_ChatComplete_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewOllamaClient(OllamaConfig{BaseURL: server.URL})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := client.ChatComplete(ctx, OllamaChatRequest{
+		Messages: []OllamaChatMessage{{Role: "user", Content: "test"}},
+	})
+	if err == nil {
+		t.Error("expected error for cancelled context")
+	}
+}
+
+func TestOllamaClient_Chat_Error(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewOllamaClient(OllamaConfig{BaseURL: server.URL})
+
+	_, err := client.Chat(context.Background(), "system", "hello")
+	if err == nil {
+		t.Error("expected error for API failure")
+	}
+}
+
+func TestOllamaClient_ChatWithHistory_Error(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewOllamaClient(OllamaConfig{BaseURL: server.URL})
+
+	history := []OllamaChatMessage{{Role: "user", Content: "hello"}}
+	_, err := client.ChatWithHistory(context.Background(), "system", history)
+	if err == nil {
+		t.Error("expected error for API failure")
+	}
+}
+
+func TestOllamaClient_Generate_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewOllamaClient(OllamaConfig{BaseURL: server.URL})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.Generate(ctx, "test", nil)
+	if err == nil {
+		t.Error("expected error for cancelled context")
+	}
+}
+
+func TestOllamaClient_Embed_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewOllamaClient(OllamaConfig{BaseURL: server.URL})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.Embed(ctx, "test")
+	if err == nil {
+		t.Error("expected error for cancelled context")
+	}
+}
+
+func TestOllamaClient_ListModels_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewOllamaClient(OllamaConfig{BaseURL: server.URL})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.ListModels(ctx)
+	if err == nil {
+		t.Error("expected error for cancelled context")
+	}
+}
+
+func TestOllamaClient_IsConfigured_ServerDown(t *testing.T) {
+	// Use a port that's unlikely to have a server
+	client := NewOllamaClient(OllamaConfig{BaseURL: "http://localhost:59999"})
+	if client.IsConfigured() {
+		t.Error("IsConfigured() should return false for unreachable server")
+	}
+}
+
+func TestOllamaClient_NewClient_DefaultValues(t *testing.T) {
+	client := NewOllamaClient(OllamaConfig{
+		// All empty, should use defaults
+	})
+
+	if client.baseURL != "http://localhost:11434" {
+		t.Errorf("baseURL = %q, want %q", client.baseURL, "http://localhost:11434")
+	}
+	if client.model != "llama3.2" {
+		t.Errorf("model = %q, want %q", client.model, "llama3.2")
+	}
+	if client.embedModel != "nomic-embed-text" {
+		t.Errorf("embedModel = %q, want %q", client.embedModel, "nomic-embed-text")
+	}
+}
+
 func BenchmarkOllamaClient_Chat(b *testing.B) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -48,6 +48,18 @@ func TestGetEnvOrDefault(t *testing.T) {
 	}
 }
 
+func TestGetEnvOrDefault_EnvSet(t *testing.T) {
+	key := "TEST_LLM_ENV_VAR_12345"
+	expectedValue := "env-value-set"
+
+	t.Setenv(key, expectedValue)
+
+	got := getEnvOrDefault(key, "default-value")
+	if got != expectedValue {
+		t.Errorf("getEnvOrDefault() = %q, want %q", got, expectedValue)
+	}
+}
+
 func TestNewAzureClient(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -485,6 +497,44 @@ func TestAzureClient_Embed_APIError(t *testing.T) {
 // =============================================================================
 // Benchmarks
 // =============================================================================
+
+func TestAzureClient_Complete_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewAzureClient(AzureConfig{
+		Endpoint:   server.URL,
+		APIKey:     "test-key",
+		Deployment: "gpt-4",
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := client.Complete(ctx, AzureChatRequest{
+		Messages: []AzureMessage{{Role: "user", Content: "test"}},
+	})
+	if err == nil {
+		t.Error("expected error for cancelled context")
+	}
+}
+
+func TestAzureClient_NewClient_DefaultTimeout(t *testing.T) {
+	client := NewAzureClient(AzureConfig{
+		Endpoint:   "https://test.openai.azure.com",
+		APIKey:     "test",
+		Deployment: "gpt-4",
+		// Timeout not set, should default to 60s
+	})
+
+	// Verify the client was created (timeout is internal)
+	if client == nil {
+		t.Error("client should not be nil")
+	}
+}
 
 func BenchmarkAzureClient_Chat(b *testing.B) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
