@@ -434,6 +434,12 @@ func (d *TriggerDetector) StoreTrigger(ctx context.Context, trigger Trigger) err
 	contextJSON, _ := encodeJSON(trigger.Context)
 	itemsJSON, _ := encodeJSON(trigger.RelatedItems)
 
+	// Use NULL for empty hat_id to satisfy FK constraint
+	var hatID interface{}
+	if trigger.HatID != "" {
+		hatID = string(trigger.HatID)
+	}
+
 	_, err := d.db.Conn().ExecContext(ctx, query,
 		trigger.ID,
 		string(trigger.Type),
@@ -441,7 +447,7 @@ func (d *TriggerDetector) StoreTrigger(ctx context.Context, trigger Trigger) err
 		trigger.Confidence,
 		contextJSON,
 		itemsJSON,
-		string(trigger.HatID),
+		hatID,
 		trigger.ExpiresAt,
 		trigger.CreatedAt,
 	)

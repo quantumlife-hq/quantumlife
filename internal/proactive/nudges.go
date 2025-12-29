@@ -246,6 +246,16 @@ func (g *NudgeGenerator) StoreNudge(ctx context.Context, nudge *Nudge) error {
 	actionsJSON, _ := encodeJSON(nudge.Actions)
 	dataJSON, _ := encodeJSON(nudge.Data)
 
+	// Use NULL for empty recommendation_id and hat_id to satisfy FK constraints
+	var recommendationID interface{}
+	if nudge.RecommendationID != "" {
+		recommendationID = nudge.RecommendationID
+	}
+	var hatID interface{}
+	if nudge.HatID != "" {
+		hatID = string(nudge.HatID)
+	}
+
 	_, err := g.db.Conn().ExecContext(ctx, query,
 		nudge.ID,
 		string(nudge.Type),
@@ -257,8 +267,8 @@ func (g *NudgeGenerator) StoreNudge(ctx context.Context, nudge *Nudge) error {
 		nudge.ActionURL,
 		actionsJSON,
 		dataJSON,
-		nudge.RecommendationID,
-		string(nudge.HatID),
+		recommendationID,
+		hatID,
 		string(nudge.Status),
 		nudge.DeliveredAt,
 		nudge.ReadAt,

@@ -461,6 +461,16 @@ func (e *RecommendationEngine) StoreRecommendation(ctx context.Context, rec Reco
 	contextJSON, _ := encodeJSON(rec.Context)
 	itemsJSON, _ := encodeJSON(rec.RelatedItems)
 
+	// Use NULL for empty hat_id and trigger_id to satisfy FK constraints
+	var hatID interface{}
+	if rec.HatID != "" {
+		hatID = string(rec.HatID)
+	}
+	var triggerID interface{}
+	if rec.TriggerID != "" {
+		triggerID = rec.TriggerID
+	}
+
 	_, err := e.db.Conn().ExecContext(ctx, query,
 		rec.ID,
 		string(rec.Type),
@@ -472,8 +482,8 @@ func (e *RecommendationEngine) StoreRecommendation(ctx context.Context, rec Reco
 		actionsJSON,
 		contextJSON,
 		itemsJSON,
-		string(rec.HatID),
-		rec.TriggerID,
+		hatID,
+		triggerID,
 		string(rec.Status),
 		rec.ExpiresAt,
 		rec.CreatedAt,

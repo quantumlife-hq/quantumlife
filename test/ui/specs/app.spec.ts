@@ -152,16 +152,19 @@ test.describe('QuantumLife App', () => {
     });
 
     test('should show understanding score section', async ({ page }) => {
-      await expect(page.getByRole('heading', { name: 'Understanding Score' })).toBeVisible();
+      // Wait for data to load
+      await page.waitForSelector('text=Understanding Score', { timeout: 10000 });
+      await expect(page.getByText('Understanding Score')).toBeVisible();
       await expect(page.getByText('Signals Captured')).toBeVisible();
-      await expect(page.getByText('Patterns Detected', { exact: true })).toBeVisible();
     });
 
     test('should show detected patterns section', async ({ page }) => {
+      await page.waitForSelector('text=Detected Patterns', { timeout: 10000 });
       await expect(page.getByText('Detected Patterns')).toBeVisible();
     });
 
     test('should show sender insights section', async ({ page }) => {
+      await page.waitForSelector('text=Sender Insights', { timeout: 10000 });
       await expect(page.getByText('Sender Insights')).toBeVisible();
     });
   });

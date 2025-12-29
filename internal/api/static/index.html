@@ -538,8 +538,13 @@
                     api('/learning/understanding').catch(() => ({})),
                     api('/learning/patterns').catch(() => ({ patterns: [] }))
                 ]).then(([u, p]) => {
-                    setUnderstanding(u);
-                    setPatterns(p.patterns || []);
+                    setUnderstanding(u || {});
+                    setPatterns((p && p.patterns) || []);
+                    setLoading(false);
+                }).catch(err => {
+                    console.error('Learning fetch error:', err);
+                    setUnderstanding({});
+                    setPatterns([]);
                     setLoading(false);
                 });
             }, []);
@@ -577,7 +582,7 @@
                                 </div>
                                 <div className="grid grid-cols-2 gap-4 mt-4">
                                     <div className="text-center p-4 bg-gray-50 rounded-lg">
-                                        <div className="text-2xl font-bold text-primary-600">{understanding?.total_signals || 0}</div>
+                                        <div className="text-2xl font-bold text-primary-600">{understanding?.signal_count || 0}</div>
                                         <div className="text-sm text-gray-500">Signals Captured</div>
                                     </div>
                                     <div className="text-center p-4 bg-gray-50 rounded-lg">

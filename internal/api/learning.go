@@ -105,7 +105,13 @@ func (h *LearningHandlers) handleGetPatterns(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	h.server.respondJSON(w, http.StatusOK, patterns)
+	// Ensure we return an object with patterns array, not null
+	if patterns == nil {
+		patterns = []learning.Pattern{}
+	}
+	h.server.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"patterns": patterns,
+	})
 }
 
 // handleGetPattern returns a specific pattern

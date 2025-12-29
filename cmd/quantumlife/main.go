@@ -15,8 +15,10 @@ import (
 	"github.com/quantumlife/quantumlife/internal/api"
 	"github.com/quantumlife/quantumlife/internal/embeddings"
 	"github.com/quantumlife/quantumlife/internal/identity"
+	"github.com/quantumlife/quantumlife/internal/learning"
 	"github.com/quantumlife/quantumlife/internal/llm"
 	"github.com/quantumlife/quantumlife/internal/mesh"
+	"github.com/quantumlife/quantumlife/internal/proactive"
 	"github.com/quantumlife/quantumlife/internal/storage"
 	"github.com/quantumlife/quantumlife/internal/vectors"
 )
@@ -166,14 +168,32 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Initialize learning service
+	learningService := learning.NewService(db, learning.DefaultServiceConfig())
+	if err := learningService.Start(ctx); err != nil {
+		fmt.Printf("⚠️  Failed to start learning service: %v\n", err)
+	} else {
+		fmt.Println("🧠 Learning service started")
+	}
+
+	// Initialize proactive service (depends on learning)
+	proactiveService := proactive.NewService(db, learningService, proactive.DefaultServiceConfig())
+	if err := proactiveService.Start(ctx); err != nil {
+		fmt.Printf("⚠️  Failed to start proactive service: %v\n", err)
+	} else {
+		fmt.Println("💡 Proactive service started")
+	}
+
 	// Create and start API server
 	server := api.New(api.Config{
-		Port:            port,
-		Agent:           ag,
-		DB:              db,
-		Identity:        you,
-		IdentityManager: identityMgr,
-		MeshHub:         meshHub,
+		Port:             port,
+		Agent:            ag,
+		DB:               db,
+		Identity:         you,
+		IdentityManager:  identityMgr,
+		MeshHub:          meshHub,
+		LearningService:  learningService,
+		ProactiveService: proactiveService,
 	})
 
 	// Handle shutdown
@@ -183,6 +203,8 @@ func runDaemon(cmd *cobra.Command, args []string) error {
 		<-sigCh
 
 		fmt.Println("\n🛑 Shutting down...")
+		proactiveService.Stop()
+		learningService.Stop()
 		if meshHub != nil {
 			meshHub.Stop()
 		}
