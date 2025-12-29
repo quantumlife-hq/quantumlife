@@ -546,6 +546,12 @@ func (d *Detector) StorePattern(ctx context.Context, pattern Pattern) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
+	// Use NULL for empty hat_id to satisfy FK constraint
+	var hatID interface{}
+	if pattern.HatID != "" {
+		hatID = string(pattern.HatID)
+	}
+
 	_, err = d.db.Conn().ExecContext(ctx, query,
 		pattern.ID,
 		string(pattern.Type),
@@ -555,7 +561,7 @@ func (d *Detector) StorePattern(ctx context.Context, pattern Pattern) error {
 		string(evidenceJSON),
 		string(conditionsJSON),
 		string(predictionJSON),
-		string(pattern.HatID),
+		hatID,
 		pattern.FirstSeen,
 		pattern.LastSeen,
 		pattern.SampleCount,
@@ -633,7 +639,8 @@ func (d *Detector) scanPatterns(rows *sql.Rows) ([]Pattern, error) {
 
 	for rows.Next() {
 		var p Pattern
-		var evidenceJSON, conditionsJSON, predictionJSON, hatID string
+		var evidenceJSON, conditionsJSON, predictionJSON string
+		var hatID sql.NullString
 
 		err := rows.Scan(
 			&p.ID, (*string)(&p.Type), &p.Description, &p.Confidence, &p.Strength,
@@ -645,7 +652,9 @@ func (d *Detector) scanPatterns(rows *sql.Rows) ([]Pattern, error) {
 			return nil, fmt.Errorf("scan pattern: %w", err)
 		}
 
-		p.HatID = core.HatID(hatID)
+		if hatID.Valid {
+			p.HatID = core.HatID(hatID.String)
+		}
 
 		if err := json.Unmarshal([]byte(evidenceJSON), &p.Evidence); err != nil {
 			p.Evidence = nil
