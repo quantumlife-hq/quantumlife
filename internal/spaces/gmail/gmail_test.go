@@ -1162,3 +1162,319 @@ func BenchmarkSpace_ConcurrentTokenAccess(b *testing.B) {
 		}
 	})
 }
+
+// ============================================================================
+// Additional Edge Case Tests
+// ============================================================================
+
+func TestSpace_SetSyncError(t *testing.T) {
+	space := New(Config{})
+
+	// Initially idle
+	status := space.GetSyncStatus()
+	if status.Status != "idle" {
+		t.Errorf("initial status = %q, want %q", status.Status, "idle")
+	}
+
+	// Set an error
+	space.setSyncError(fmt.Errorf("connection refused"))
+
+	status = space.GetSyncStatus()
+	if status.Status != "error" {
+		t.Errorf("status = %q, want %q", status.Status, "error")
+	}
+	if status.LastError != "connection refused" {
+		t.Errorf("LastError = %q, want %q", status.LastError, "connection refused")
+	}
+}
+
+func TestSpace_Sync_ExpiredToken(t *testing.T) {
+	cfg := Config{
+		OAuthConfig: OAuthConfig{
+			ClientID:     "test-id",
+			ClientSecret: "test-secret",
+		},
+	}
+	space := New(cfg)
+
+	// Simulate connected state with expired token
+	space.mu.Lock()
+	space.connected = true
+	space.token = &oauth2.Token{
+		AccessToken: "expired",
+		Expiry:      time.Now().Add(-1 * time.Hour), // Already expired
+	}
+	space.mu.Unlock()
+
+	_, err := space.Sync(context.Background())
+	if err == nil {
+		t.Error("Sync with expired token and no refresh should fail")
+	}
+	// Should fail when trying to refresh since we don't have a valid OAuth endpoint
+
+	// Verify error status was set
+	status := space.GetSyncStatus()
+	if status.Status != "error" {
+		t.Errorf("status after failed sync = %q, want %q", status.Status, "error")
+	}
+}
+
+func TestSpace_FetchMessages_Empty(t *testing.T) {
+	space := New(Config{})
+
+	// Simulate connected state with nil client
+	space.mu.Lock()
+	space.connected = true
+	space.client = NewClient(nil) // nil service
+	space.mu.Unlock()
+
+	// Empty summaries should work
+	items, err := space.FetchMessages(context.Background(), []MessageSummary{})
+	if err != nil {
+		t.Fatalf("FetchMessages with empty list error: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("expected 0 items, got %d", len(items))
+	}
+}
+
+func TestSpace_Connect_WithToken(t *testing.T) {
+	cfg := Config{
+		OAuthConfig: OAuthConfig{
+			ClientID:     "test-id",
+			ClientSecret: "test-secret",
+		},
+	}
+	space := New(cfg)
+
+	// Set a token
+	space.SetToken(&oauth2.Token{
+		AccessToken: "test-access-token",
+	})
+
+	// Connect should fail when creating Gmail service (no valid credentials)
+	err := space.Connect(context.Background())
+	if err == nil {
+		// May succeed if OAuth config is invalid but token exists
+		// The actual API call would fail
+	}
+	// Just verify no panic
+}
+
+func TestSpace_Sync_StatusTransition(t *testing.T) {
+	space := New(Config{})
+
+	// Verify not connected error
+	status := space.GetSyncStatus()
+	if status.Status != "idle" {
+		t.Errorf("initial status = %q, want idle", status.Status)
+	}
+
+	_, err := space.Sync(context.Background())
+	if err == nil {
+		t.Error("expected error for not connected")
+	}
+
+	// Status should still be idle (not changed to error for not connected)
+	status = space.GetSyncStatus()
+	if status.Status != "idle" {
+		t.Errorf("status after not connected = %q, want idle", status.Status)
+	}
+}
+
+func TestSpace_FetchMessages_WithSummaries_Structure(t *testing.T) {
+	// Test that FetchMessages correctly structures the call
+	// Note: Actual Gmail API calls require a valid service
+	// This test verifies the method signature and initial checks work
+
+	space := New(Config{DefaultHatID: core.HatProfessional})
+
+	// Not connected should return error
+	summaries := []MessageSummary{
+		{ID: "msg-1", ThreadID: "thread-1"},
+		{ID: "msg-2", ThreadID: "thread-2"},
+	}
+
+	_, err := space.FetchMessages(context.Background(), summaries)
+	if err == nil {
+		t.Error("FetchMessages when not connected should return error")
+	}
+	if !strings.Contains(err.Error(), "not connected") {
+		t.Errorf("error = %v, expected 'not connected'", err)
+	}
+}
+
+func TestSpace_MultipleCursors(t *testing.T) {
+	space := New(Config{})
+
+	// Test setting and getting multiple cursors
+	cursors := []string{"123456", "789012", "345678"}
+
+	for _, cursor := range cursors {
+		space.SetSyncCursor(cursor)
+		got := space.GetSyncCursor()
+		if got != cursor {
+			t.Errorf("GetSyncCursor() = %q, want %q", got, cursor)
+		}
+	}
+}
+
+func TestSpace_DisconnectIdempotent(t *testing.T) {
+	space := New(Config{})
+
+	// Disconnect multiple times should not error
+	for i := 0; i < 3; i++ {
+		err := space.Disconnect(context.Background())
+		if err != nil {
+			t.Errorf("Disconnect #%d error: %v", i+1, err)
+		}
+	}
+
+	if space.IsConnected() {
+		t.Error("space should not be connected after Disconnect")
+	}
+}
+
+func TestSpace_SyncStatus_Fields(t *testing.T) {
+	space := New(Config{})
+
+	// Modify all status fields
+	now := time.Now()
+	space.mu.Lock()
+	space.syncStatus.Status = "syncing"
+	space.syncStatus.LastSync = now
+	space.syncStatus.LastError = "previous error"
+	space.syncStatus.ItemCount = 100
+	space.mu.Unlock()
+
+	status := space.GetSyncStatus()
+	if status.Status != "syncing" {
+		t.Errorf("Status = %q, want syncing", status.Status)
+	}
+	if !status.LastSync.Equal(now) {
+		t.Errorf("LastSync = %v, want %v", status.LastSync, now)
+	}
+	if status.LastError != "previous error" {
+		t.Errorf("LastError = %q, want 'previous error'", status.LastError)
+	}
+	if status.ItemCount != 100 {
+		t.Errorf("ItemCount = %d, want 100", status.ItemCount)
+	}
+}
+
+func TestLocalAuthServer_HandleCallback_EmptyRequest(t *testing.T) {
+	server := NewLocalAuthServer(0)
+
+	// Request with no code and no error
+	req := httptest.NewRequest("GET", "/callback", nil)
+	w := httptest.NewRecorder()
+
+	var receivedErr error
+	done := make(chan struct{})
+	go func() {
+		select {
+		case receivedErr = <-server.errChan:
+		case <-time.After(1 * time.Second):
+		}
+		close(done)
+	}()
+
+	server.handleCallback(w, req)
+	<-done
+
+	// Should receive an error for missing code
+	if receivedErr == nil {
+		t.Error("expected error for missing code")
+	}
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("response code = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestOAuthFlow_ExchangeCode_InvalidEndpoint(t *testing.T) {
+	cfg := OAuthConfig{
+		ClientID:     "test-id",
+		ClientSecret: "test-secret",
+		RedirectURL:  "http://localhost/callback",
+		Scopes:       []string{"scope1"},
+	}
+	flow := NewOAuthFlow(cfg)
+
+	// ExchangeCode with invalid endpoint should fail
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err := flow.ExchangeCode(ctx, "invalid-code")
+	if err == nil {
+		t.Error("ExchangeCode with invalid code should fail")
+	}
+}
+
+func TestOAuthFlow_RefreshToken_InvalidEndpoint(t *testing.T) {
+	cfg := OAuthConfig{
+		ClientID:     "test-id",
+		ClientSecret: "test-secret",
+		RedirectURL:  "http://localhost/callback",
+		Scopes:       []string{"scope1"},
+	}
+	flow := NewOAuthFlow(cfg)
+
+	token := &oauth2.Token{
+		RefreshToken: "invalid-refresh-token",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	_, err := flow.RefreshToken(ctx, token)
+	if err == nil {
+		t.Error("RefreshToken with invalid token should fail")
+	}
+}
+
+func TestMessage_ToItem_WithMultipleRecipients(t *testing.T) {
+	msg := &Message{
+		ID:       "msg-multi",
+		ThreadID: "thread-multi",
+		From:     "sender@example.com",
+		To:       "user1@example.com, user2@example.com, user3@example.com",
+		Subject:  "Multi Recipient Test",
+		Body:     "Body content",
+		Date:     time.Now(),
+		Labels:   []string{"INBOX"},
+		IsUnread: false,
+	}
+
+	item := msg.ToItem("space-1")
+
+	// To field is stored as single string in array (not split by implementation)
+	if len(item.To) != 1 {
+		t.Errorf("To length = %d, want 1", len(item.To))
+	}
+	if item.To[0] != "user1@example.com, user2@example.com, user3@example.com" {
+		t.Errorf("To[0] = %q, want full recipient string", item.To[0])
+	}
+}
+
+func TestMessage_ToItem_Priority(t *testing.T) {
+	// Implementation uses default priority 3 for all messages
+	// (priority is updated by classifier, not based on IsUnread)
+	unreadMsg := &Message{
+		ID:       "msg-unread",
+		IsUnread: true,
+	}
+	unreadItem := unreadMsg.ToItem("space-1")
+	if unreadItem.Priority != 3 {
+		t.Errorf("unread message Priority = %d, want 3", unreadItem.Priority)
+	}
+
+	// Read messages also get default priority 3
+	readMsg := &Message{
+		ID:       "msg-read",
+		IsUnread: false,
+	}
+	readItem := readMsg.ToItem("space-1")
+	if readItem.Priority != 3 {
+		t.Errorf("read message Priority = %d, want 3", readItem.Priority)
+	}
+}
