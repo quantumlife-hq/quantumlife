@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/quantumlife/quantumlife/internal/testutil/mockservers"
@@ -1795,5 +1798,300 @@ func BenchmarkGetNestedString(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		getNestedString(input, "head", "ref")
+	}
+}
+
+// ============================================================================
+// HTTP Client Edge Case Tests
+// ============================================================================
+
+func TestClient_Get_InvalidURL(t *testing.T) {
+	client := &Client{
+		token:      "test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    "://invalid-url", // Invalid URL
+	}
+
+	_, err := client.Get(context.Background(), "/user")
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestClient_GetMap_UnexpectedType(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Return array instead of map
+		w.Write([]byte(`[{"name": "test"}]`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	_, err := client.GetMap(context.Background(), "/test")
+	if err == nil {
+		t.Error("expected error for unexpected response type")
+	}
+	if !strings.Contains(err.Error(), "unexpected response type") {
+		t.Errorf("error = %v, expected 'unexpected response type'", err)
+	}
+}
+
+func TestClient_Post_InvalidURL(t *testing.T) {
+	client := &Client{
+		token:      "test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    "://invalid-url", // Invalid URL
+	}
+
+	_, err := client.Post(context.Background(), "/test", map[string]interface{}{"key": "value"})
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestClient_Post_UnexpectedType(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Return array instead of map
+		w.Write([]byte(`[{"name": "test"}]`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	_, err := client.Post(context.Background(), "/test", map[string]interface{}{"key": "value"})
+	if err == nil {
+		t.Error("expected error for unexpected response type")
+	}
+	if !strings.Contains(err.Error(), "unexpected response type") {
+		t.Errorf("error = %v, expected 'unexpected response type'", err)
+	}
+}
+
+func TestClient_DoRequest_APIError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"message": "Not Found"}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	_, err := client.Get(context.Background(), "/nonexistent")
+	if err == nil {
+		t.Error("expected error for API error")
+	}
+	if !strings.Contains(err.Error(), "Not Found") {
+		t.Errorf("error = %v, expected to contain 'Not Found'", err)
+	}
+}
+
+func TestClient_DoRequest_InvalidJSON(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("invalid json {"))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	_, err := client.Get(context.Background(), "/test")
+	if err == nil {
+		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestClient_DoRequest_NetworkError(t *testing.T) {
+	client := &Client{
+		token:      "test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    "http://localhost:1", // Port 1 should be unreachable
+	}
+
+	_, err := client.Get(context.Background(), "/test")
+	if err == nil {
+		t.Error("expected network error")
+	}
+}
+
+func TestClient_DoRequest_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify headers
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			t.Error("missing Bearer token")
+		}
+		accept := r.Header.Get("Accept")
+		if accept != "application/vnd.github+json" {
+			t.Errorf("Accept = %q, want application/vnd.github+json", accept)
+		}
+		apiVersion := r.Header.Get("X-GitHub-Api-Version")
+		if apiVersion != "2022-11-28" {
+			t.Errorf("X-GitHub-Api-Version = %q, want 2022-11-28", apiVersion)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"login": "testuser"}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	result, err := client.GetMap(context.Background(), "/user")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result["login"] != "testuser" {
+		t.Errorf("login = %v, want testuser", result["login"])
+	}
+}
+
+func TestGetNestedString_NonMapIntermediate(t *testing.T) {
+	input := map[string]interface{}{
+		"head": "not a map",
+	}
+
+	result := getNestedString(input, "head", "ref")
+	if result != "" {
+		t.Errorf("expected empty string for non-map intermediate, got %q", result)
+	}
+}
+
+func TestGetNestedString_DeepNesting(t *testing.T) {
+	input := map[string]interface{}{
+		"level1": map[string]interface{}{
+			"level2": map[string]interface{}{
+				"level3": "deep value",
+			},
+		},
+	}
+
+	result := getNestedString(input, "level1", "level2", "level3")
+	if result != "deep value" {
+		t.Errorf("got %q, want %q", result, "deep value")
+	}
+
+	// Test non-string at leaf
+	input2 := map[string]interface{}{
+		"level1": map[string]interface{}{
+			"number": 42,
+		},
+	}
+
+	result2 := getNestedString(input2, "level1", "number")
+	if result2 != "" {
+		t.Errorf("expected empty string for non-string value, got %q", result2)
+	}
+}
+
+func TestGitHubServer_AddComment_MissingOwner(t *testing.T) {
+	mock := &MockGitHubAPI{}
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"repo":   "hello-world",
+		"number": 1,
+		"body":   "Test comment",
+	})
+	result, _ := srv.handleAddComment(ctx, argsJSON)
+	if !result.IsError {
+		t.Error("expected error result for missing owner")
+	}
+}
+
+func TestGitHubServer_AddComment_MissingRepo(t *testing.T) {
+	mock := &MockGitHubAPI{}
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"owner":  "octocat",
+		"number": 1,
+		"body":   "Test comment",
+	})
+	result, _ := srv.handleAddComment(ctx, argsJSON)
+	if !result.IsError {
+		t.Error("expected error result for missing repo")
+	}
+}
+
+func TestGitHubServer_CreateIssue_MissingRepo(t *testing.T) {
+	mock := &MockGitHubAPI{}
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"owner": "octocat",
+		"title": "Test Issue",
+	})
+	result, _ := srv.handleCreateIssue(ctx, argsJSON)
+	if !result.IsError {
+		t.Error("expected error result for missing repo")
+	}
+}
+
+func TestBytesReader(t *testing.T) {
+	data := []byte("hello world")
+	reader := bytesReader(data)
+
+	// Read in chunks
+	buf := make([]byte, 5)
+	n, err := reader.Read(buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 5 {
+		t.Errorf("n = %d, want 5", n)
+	}
+	if string(buf) != "hello" {
+		t.Errorf("buf = %q, want hello", string(buf))
+	}
+
+	// Read remaining
+	n, err = reader.Read(buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 5 {
+		t.Errorf("n = %d, want 5", n)
+	}
+
+	// Read past end
+	buf2 := make([]byte, 5)
+	n, err = reader.Read(buf2)
+	if n != 1 {
+		t.Errorf("n = %d, want 1", n)
+	}
+
+	// Read after EOF
+	n, err = reader.Read(buf2)
+	if err != io.EOF {
+		t.Errorf("expected EOF, got %v", err)
+	}
+	if n != 0 {
+		t.Errorf("n = %d, want 0", n)
 	}
 }
