@@ -902,3 +902,382 @@ func BenchmarkTruncate(b *testing.B) {
 		truncate(s, 50)
 	}
 }
+
+// ============================================================================
+// Additional Edge Cases and Coverage Tests
+// ============================================================================
+
+func TestEngineConfig_ZeroValues(t *testing.T) {
+	cfg := EngineConfig{} // All zero values
+
+	if cfg.MaxMemories != 0 {
+		t.Error("Zero config should have MaxMemories = 0")
+	}
+	if cfg.EnableRAG {
+		t.Error("Zero config should have EnableRAG = false")
+	}
+	if cfg.EnableLearning {
+		t.Error("Zero config should have EnableLearning = false")
+	}
+}
+
+func TestTriageResult_ZeroValues(t *testing.T) {
+	result := TriageResult{}
+
+	if result.HatID != "" {
+		t.Error("Zero result should have empty HatID")
+	}
+	if result.Confidence != 0 {
+		t.Error("Zero result should have Confidence = 0")
+	}
+	if result.Priority != 0 {
+		t.Error("Zero result should have Priority = 0")
+	}
+	if len(result.Actions) != 0 {
+		t.Error("Zero result should have no actions")
+	}
+}
+
+func TestSuggestedAction_EmptyParameters(t *testing.T) {
+	action := SuggestedAction{
+		Type:        ActionReply,
+		Description: "Reply to email",
+		Confidence:  0.9,
+		Parameters:  nil,
+	}
+
+	if action.Parameters != nil {
+		t.Error("Parameters should be nil when not set")
+	}
+}
+
+func TestContextItem_EmptyFields(t *testing.T) {
+	ctx := ContextItem{}
+
+	if ctx.Type != "" {
+		t.Error("Empty ContextItem should have empty Type")
+	}
+	if ctx.Relevance != 0 {
+		t.Error("Empty ContextItem should have Relevance = 0")
+	}
+}
+
+func TestRetrievedMemory_NilMemory(t *testing.T) {
+	rm := RetrievedMemory{
+		Memory:    nil,
+		Relevance: 0.5,
+	}
+
+	if rm.Memory != nil {
+		t.Error("Memory should be nil")
+	}
+	if rm.Relevance != 0.5 {
+		t.Error("Relevance should be 0.5")
+	}
+}
+
+func TestFallbackTriage_MixedKeywords(t *testing.T) {
+	engine := NewEngine(nil, nil, DefaultEngineConfig())
+
+	// Item with both financial and professional keywords
+	// Financial keywords come first in the check order
+	item := &core.Item{
+		Subject: "Invoice for Project Work",
+		Body:    "Payment for meeting deadline project invoice",
+	}
+
+	result := engine.fallbackTriage(item)
+
+	// Financial takes precedence due to check order
+	if result.HatID != core.HatFinance {
+		t.Errorf("Mixed keywords should classify as finance (first match), got %q", result.HatID)
+	}
+}
+
+func TestFallbackTriage_TravelKeywords(t *testing.T) {
+	engine := NewEngine(nil, nil, DefaultEngineConfig())
+
+	tests := []struct {
+		name    string
+		subject string
+		body    string
+	}{
+		{
+			name:    "flight",
+			subject: "Flight Confirmation",
+			body:    "Your flight is booked",
+		},
+		{
+			name:    "hotel",
+			subject: "Hotel Reservation",
+			body:    "Your hotel room is confirmed",
+		},
+		{
+			name:    "trip",
+			subject: "Trip Planning",
+			body:    "Planning your upcoming trip",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			item := &core.Item{
+				Subject: tt.subject,
+				Body:    tt.body,
+			}
+			result := engine.fallbackTriage(item)
+			// Travel falls under personal per implementation
+			if result.HatID != core.HatPersonal {
+				t.Errorf("Travel keywords should map to personal, got %q", result.HatID)
+			}
+		})
+	}
+}
+
+func TestParseTriageResponse_AllActionTypes(t *testing.T) {
+	engine := NewEngine(nil, nil, DefaultEngineConfig())
+
+	response := `{
+		"hat_id": "professional",
+		"confidence": 0.9,
+		"priority": 2,
+		"urgency": 1,
+		"reasoning": "Test",
+		"actions": [
+			{"type": "reply", "description": "Reply", "confidence": 0.9},
+			{"type": "archive", "description": "Archive", "confidence": 0.8},
+			{"type": "delegate", "description": "Delegate", "confidence": 0.7},
+			{"type": "schedule", "description": "Schedule", "confidence": 0.6},
+			{"type": "remind", "description": "Remind", "confidence": 0.5},
+			{"type": "label", "description": "Label", "confidence": 0.4},
+			{"type": "flag", "description": "Flag", "confidence": 0.3},
+			{"type": "draft", "description": "Draft", "confidence": 0.2}
+		]
+	}`
+
+	result, err := engine.parseTriageResponse(response)
+	if err != nil {
+		t.Fatalf("parseTriageResponse: %v", err)
+	}
+
+	if len(result.Actions) != 8 {
+		t.Errorf("Actions length = %d, want 8", len(result.Actions))
+	}
+
+	expectedTypes := []ActionType{
+		ActionReply, ActionArchive, ActionDelegate, ActionSchedule,
+		ActionRemind, ActionLabel, ActionFlag, ActionDraft,
+	}
+
+	for i, expected := range expectedTypes {
+		if result.Actions[i].Type != expected {
+			t.Errorf("Actions[%d].Type = %s, want %s", i, result.Actions[i].Type, expected)
+		}
+	}
+}
+
+func TestParseTriageResponse_ImportanceCalculation(t *testing.T) {
+	engine := NewEngine(nil, nil, DefaultEngineConfig())
+
+	tests := []struct {
+		priority       int
+		wantImportance float64
+	}{
+		{1, 0.25},
+		{2, 0.50},
+		{3, 0.75},
+		{4, 1.00},
+	}
+
+	for _, tt := range tests {
+		response := `{"hat_id": "personal", "confidence": 0.5, "priority": ` +
+			string(rune('0'+tt.priority)) +
+			`, "urgency": 0, "reasoning": "", "actions": []}`
+
+		result, err := engine.parseTriageResponse(response)
+		if err != nil {
+			t.Fatalf("parseTriageResponse: %v", err)
+		}
+
+		if result.Importance != tt.wantImportance {
+			t.Errorf("Priority %d: Importance = %v, want %v", tt.priority, result.Importance, tt.wantImportance)
+		}
+	}
+}
+
+func TestBuildTriagePrompt_UnicodeContent(t *testing.T) {
+	engine := NewEngine(nil, nil, DefaultEngineConfig())
+
+	item := &core.Item{
+		Type:    "email",
+		From:    "user@例え.jp",
+		Subject: "会議のお知らせ",
+		Body:    "明日の会議について",
+	}
+
+	prompt := engine.buildTriagePrompt(item, nil)
+
+	if prompt == "" {
+		t.Error("Prompt should not be empty")
+	}
+	// Should preserve unicode
+	if !containsAny(prompt, []string{"会議"}) {
+		t.Error("Prompt should preserve unicode characters")
+	}
+}
+
+func TestBuildTriagePrompt_EmptyRAGContext(t *testing.T) {
+	engine := NewEngine(nil, nil, DefaultEngineConfig())
+
+	item := &core.Item{
+		Type:    "email",
+		Subject: "Test",
+		Body:    "Body",
+	}
+
+	// Empty slice (not nil)
+	prompt := engine.buildTriagePrompt(item, []ContextItem{})
+
+	// Should not include RAG context header when context is empty
+	if containsAny(prompt, []string{"Relevant context from history"}) {
+		t.Error("Prompt should not include RAG context header when context is empty")
+	}
+}
+
+func TestShouldAutoRoute_BoundaryValues(t *testing.T) {
+	cfg := EngineConfig{
+		HighConfidence: 0.85,
+	}
+	engine := NewEngine(nil, nil, cfg)
+
+	tests := []struct {
+		confidence float64
+		want       bool
+	}{
+		{0.849999, false},
+		{0.850000, true},
+		{0.850001, true},
+		{1.0, true},
+		{0.0, false},
+	}
+
+	for _, tt := range tests {
+		result := &TriageResult{Confidence: tt.confidence}
+		got := engine.ShouldAutoRoute(result)
+		if got != tt.want {
+			t.Errorf("ShouldAutoRoute(%.6f) = %v, want %v", tt.confidence, got, tt.want)
+		}
+	}
+}
+
+func TestShouldSuggest_BoundaryValues(t *testing.T) {
+	cfg := EngineConfig{
+		MediumConfidence: 0.6,
+		HighConfidence:   0.85,
+	}
+	engine := NewEngine(nil, nil, cfg)
+
+	tests := []struct {
+		confidence float64
+		want       bool
+	}{
+		{0.599999, false},
+		{0.600000, true},
+		{0.600001, true},
+		{0.849999, true},
+		{0.850000, false},
+		{0.850001, false},
+	}
+
+	for _, tt := range tests {
+		result := &TriageResult{Confidence: tt.confidence}
+		got := engine.ShouldSuggest(result)
+		if got != tt.want {
+			t.Errorf("ShouldSuggest(%.6f) = %v, want %v", tt.confidence, got, tt.want)
+		}
+	}
+}
+
+func TestTruncate_ExactLength(t *testing.T) {
+	// Test when string length equals maxLen
+	s := "hello"
+	result := truncate(s, 5)
+	if result != "hello" {
+		t.Errorf("truncate(%q, 5) = %q, want %q", s, result, "hello")
+	}
+}
+
+func TestTruncate_ZeroLength(t *testing.T) {
+	result := truncate("hello", 0)
+	// With maxLen 0, it should return "..." (since len("hello") > 0)
+	if result != "..." {
+		t.Errorf("truncate('hello', 0) = %q, want '...'", result)
+	}
+}
+
+func TestContainsAny_EmptyString(t *testing.T) {
+	result := containsAny("", []string{"a", "b"})
+	if result {
+		t.Error("Empty string should not contain any substrings")
+	}
+}
+
+func TestContainsAny_SingleCharMatch(t *testing.T) {
+	result := containsAny("a", []string{"a"})
+	if !result {
+		t.Error("Should match single character")
+	}
+}
+
+func TestParseTriageResponse_ExtraFields(t *testing.T) {
+	engine := NewEngine(nil, nil, DefaultEngineConfig())
+
+	// JSON with extra fields that should be ignored
+	response := `{
+		"hat_id": "personal",
+		"confidence": 0.8,
+		"priority": 2,
+		"urgency": 1,
+		"reasoning": "Test",
+		"actions": [],
+		"extra_field": "ignored",
+		"another_extra": 123
+	}`
+
+	result, err := engine.parseTriageResponse(response)
+	if err != nil {
+		t.Fatalf("parseTriageResponse should ignore extra fields: %v", err)
+	}
+
+	if result.HatID != "personal" {
+		t.Errorf("HatID = %q, want personal", result.HatID)
+	}
+}
+
+func TestParseTriageResponse_ZeroValues(t *testing.T) {
+	engine := NewEngine(nil, nil, DefaultEngineConfig())
+
+	response := `{
+		"hat_id": "",
+		"confidence": 0,
+		"priority": 0,
+		"urgency": 0,
+		"reasoning": "",
+		"actions": []
+	}`
+
+	result, err := engine.parseTriageResponse(response)
+	if err != nil {
+		t.Fatalf("parseTriageResponse: %v", err)
+	}
+
+	if result.HatID != "" {
+		t.Errorf("HatID = %q, want empty", result.HatID)
+	}
+	if result.Confidence != 0 {
+		t.Errorf("Confidence = %v, want 0", result.Confidence)
+	}
+	if result.Priority != Priority(0) {
+		t.Errorf("Priority = %d, want 0", result.Priority)
+	}
+}
