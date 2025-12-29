@@ -1294,3 +1294,415 @@ func BenchmarkSpace_ConcurrentTokenAccess(b *testing.B) {
 		}
 	})
 }
+
+// ============================================================================
+// Additional Edge Case Tests
+// ============================================================================
+
+func TestSpace_setSyncError(t *testing.T) {
+	space := New(Config{})
+
+	// Set an error
+	testErr := fmt.Errorf("token refresh failed")
+	space.setSyncError(testErr)
+
+	status := space.GetSyncStatus()
+	if status.Status != "error" {
+		t.Errorf("Status = %q, want %q", status.Status, "error")
+	}
+	if status.LastError != "token refresh failed" {
+		t.Errorf("LastError = %q, want %q", status.LastError, "token refresh failed")
+	}
+}
+
+func TestSpace_setSyncError_MultipleTimes(t *testing.T) {
+	space := New(Config{})
+
+	// Set first error
+	space.setSyncError(fmt.Errorf("first error"))
+	status := space.GetSyncStatus()
+	if status.LastError != "first error" {
+		t.Errorf("LastError = %q, want %q", status.LastError, "first error")
+	}
+
+	// Set second error - should overwrite
+	space.setSyncError(fmt.Errorf("second error"))
+	status = space.GetSyncStatus()
+	if status.LastError != "second error" {
+		t.Errorf("LastError = %q, want %q", status.LastError, "second error")
+	}
+}
+
+func TestSpace_Sync_ExpiredToken(t *testing.T) {
+	space := New(Config{
+		OAuthConfig: OAuthConfig{
+			ClientID:     "test-id",
+			ClientSecret: "test-secret",
+		},
+	})
+
+	// Set expired token and simulate connected state
+	expiredToken := &oauth2.Token{
+		AccessToken:  "expired-token",
+		RefreshToken: "refresh-token",
+		Expiry:       time.Now().Add(-1 * time.Hour), // Expired
+	}
+	space.SetToken(expiredToken)
+	space.mu.Lock()
+	space.connected = true
+	space.mu.Unlock()
+
+	// Sync should fail when trying to refresh (no real OAuth server)
+	_, err := space.Sync(context.Background())
+	if err == nil {
+		t.Error("Sync with expired token and no OAuth server should fail")
+	}
+	// Error should mention token refresh
+	if !strings.Contains(err.Error(), "refresh token") {
+		t.Errorf("error = %v, expected to contain 'refresh token'", err)
+	}
+}
+
+func TestEventToItem_WithAllFields(t *testing.T) {
+	event := Event{
+		ID:          "full-event-123",
+		Summary:     "Full Event",
+		Description: "This is a complete event with all fields",
+		Location:    "Conference Room B",
+		Start:       time.Date(2025, 6, 15, 14, 0, 0, 0, time.UTC),
+		End:         time.Date(2025, 6, 15, 15, 0, 0, 0, time.UTC),
+		AllDay:      false,
+		Organizer:   "boss@company.com",
+		Status:      "confirmed",
+		Link:        "https://calendar.google.com/event/full-event-123",
+		CalendarID:  "primary",
+		Attendees: []Attendee{
+			{Email: "attendee1@example.com", DisplayName: "Attendee One"},
+			{Email: "attendee2@example.com", DisplayName: "Attendee Two"},
+		},
+		Reminders: []Reminder{
+			{Method: "popup", Minutes: 10},
+			{Method: "email", Minutes: 30},
+		},
+		Created: time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC),
+		Updated: time.Date(2025, 6, 10, 12, 0, 0, 0, time.UTC),
+	}
+
+	item := EventToItem(event, "cal-space-full", core.HatProfessional)
+
+	if item.ID != "cal_full-event-123" {
+		t.Errorf("ID = %q, want %q", item.ID, "cal_full-event-123")
+	}
+	if item.Subject != "Full Event" {
+		t.Errorf("Subject = %q, want %q", item.Subject, "Full Event")
+	}
+	if item.Body != "This is a complete event with all fields" {
+		t.Errorf("Body = %q, want description text", item.Body)
+	}
+	if item.From != "boss@company.com" {
+		t.Errorf("From = %q, want %q", item.From, "boss@company.com")
+	}
+}
+
+func TestEventToItem_AllDayEvent(t *testing.T) {
+	startDate := time.Date(2025, 7, 4, 0, 0, 0, 0, time.UTC)
+	event := Event{
+		ID:      "holiday-event",
+		Summary: "Independence Day",
+		Start:   startDate,
+		AllDay:  true,
+	}
+
+	item := EventToItem(event, "personal-cal", core.HatPersonal)
+
+	if item.ID != "cal_holiday-event" {
+		t.Errorf("ID = %q, want %q", item.ID, "cal_holiday-event")
+	}
+	if !item.Timestamp.Equal(startDate) {
+		t.Errorf("Timestamp = %v, want %v", item.Timestamp, startDate)
+	}
+}
+
+func TestTokenFromJSON_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		json    string
+		wantErr bool
+	}{
+		{
+			name:    "with expiry",
+			json:    `{"access_token":"token","expiry":"2025-12-31T23:59:59Z"}`,
+			wantErr: false,
+		},
+		{
+			name:    "without expiry",
+			json:    `{"access_token":"token"}`,
+			wantErr: false,
+		},
+		{
+			name:    "with extra fields",
+			json:    `{"access_token":"token","custom_field":"ignored"}`,
+			wantErr: false,
+		},
+		{
+			name:    "null json",
+			json:    `null`,
+			wantErr: false, // null json unmarshals to empty token without error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token, err := TokenFromJSON([]byte(tt.json))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("TokenFromJSON() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && token == nil {
+				t.Error("TokenFromJSON returned nil token for valid input")
+			}
+		})
+	}
+}
+
+func TestSpace_Disconnect_MultipleTimes(t *testing.T) {
+	space := New(Config{})
+
+	// Disconnect when already disconnected
+	err := space.Disconnect(context.Background())
+	if err != nil {
+		t.Errorf("First Disconnect error: %v", err)
+	}
+
+	// Disconnect again
+	err = space.Disconnect(context.Background())
+	if err != nil {
+		t.Errorf("Second Disconnect error: %v", err)
+	}
+
+	if space.IsConnected() {
+		t.Error("space should not be connected after multiple Disconnect calls")
+	}
+}
+
+func TestSpace_GetClient_AfterDisconnect(t *testing.T) {
+	space := New(Config{})
+
+	// Simulate connected state with client
+	space.mu.Lock()
+	space.connected = true
+	space.client = &Client{} // Minimal client
+	space.mu.Unlock()
+
+	// Verify client exists
+	if space.GetClient() == nil {
+		t.Error("client should exist before disconnect")
+	}
+
+	// Disconnect
+	space.Disconnect(context.Background())
+
+	// Client should be nil after disconnect
+	if space.GetClient() != nil {
+		t.Error("client should be nil after disconnect")
+	}
+}
+
+func TestClient_IsTokenValid_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		token *oauth2.Token
+		want  bool
+	}{
+		{
+			name:  "nil token",
+			token: nil,
+			want:  false,
+		},
+		{
+			name: "empty access token",
+			token: &oauth2.Token{
+				AccessToken: "",
+				Expiry:      time.Now().Add(1 * time.Hour),
+			},
+			want: false,
+		},
+		{
+			name: "zero expiry (no expiration)",
+			token: &oauth2.Token{
+				AccessToken: "valid-token",
+				Expiry:      time.Time{}, // Zero time means no expiry
+			},
+			want: true,
+		},
+		{
+			name: "just expired",
+			token: &oauth2.Token{
+				AccessToken: "expired-token",
+				Expiry:      time.Now().Add(-1 * time.Millisecond),
+			},
+			want: false,
+		},
+		{
+			name: "expires soon (within expiry delta)",
+			token: &oauth2.Token{
+				AccessToken: "almost-expired",
+				Expiry:      time.Now().Add(10 * time.Second),
+			},
+			// oauth2 considers token invalid if within "expiryDelta" (10s default)
+			want: false,
+		},
+		{
+			name: "expires in 1 minute - valid",
+			token: &oauth2.Token{
+				AccessToken: "valid-token",
+				Expiry:      time.Now().Add(1 * time.Minute),
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{token: tt.token}
+			got := client.IsTokenValid()
+			if got != tt.want {
+				t.Errorf("IsTokenValid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClient_GetToken_NilClient(t *testing.T) {
+	client := &Client{token: nil}
+	got := client.GetToken()
+	if got != nil {
+		t.Error("GetToken should return nil when token is nil")
+	}
+}
+
+func TestSpace_ConcurrentDisconnect(t *testing.T) {
+	space := New(Config{})
+	space.mu.Lock()
+	space.connected = true
+	space.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			space.Disconnect(context.Background())
+		}()
+	}
+	wg.Wait()
+
+	if space.IsConnected() {
+		t.Error("space should not be connected after concurrent disconnects")
+	}
+}
+
+func TestLocalAuthServer_Stop_WithServer(t *testing.T) {
+	server := NewLocalAuthServer(0)
+
+	// Create a test HTTP server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	// Assign the test server to the LocalAuthServer
+	server.server = ts.Config
+
+	// Stop should work with a real server
+	err := server.Stop(context.Background())
+	if err != nil {
+		t.Errorf("Stop with valid server should not error: %v", err)
+	}
+}
+
+func TestSpace_GetSyncStatus_InitialState(t *testing.T) {
+	space := New(Config{
+		ID:   "test-cal",
+		Name: "Test Calendar",
+	})
+
+	status := space.GetSyncStatus()
+
+	if status.Status != "idle" {
+		t.Errorf("initial Status = %q, want %q", status.Status, "idle")
+	}
+	if status.ItemCount != 0 {
+		t.Errorf("initial ItemCount = %d, want 0", status.ItemCount)
+	}
+	if status.LastError != "" {
+		t.Errorf("initial LastError = %q, want empty", status.LastError)
+	}
+}
+
+func TestSpace_Connect_WithToken_InvalidCredentials(t *testing.T) {
+	space := New(Config{
+		OAuthConfig: OAuthConfig{
+			ClientID:     "test-id",
+			ClientSecret: "test-secret",
+			RedirectURL:  "http://localhost:8080/callback",
+		},
+	})
+
+	// Set a token
+	token := &oauth2.Token{
+		AccessToken:  "test-token",
+		TokenType:    "Bearer",
+		RefreshToken: "refresh-token",
+		Expiry:       time.Now().Add(1 * time.Hour),
+	}
+	space.SetToken(token)
+
+	// Connect should fail - either at client creation or at verification
+	err := space.Connect(context.Background())
+	if err == nil {
+		t.Error("Connect with invalid token should fail")
+	}
+	// Error could be at client creation or verification stage
+	if !strings.Contains(err.Error(), "create calendar client") && !strings.Contains(err.Error(), "verify connection") {
+		t.Errorf("error = %v, expected to contain 'create calendar client' or 'verify connection'", err)
+	}
+}
+
+func TestEventToItem_SpecialCharactersInSummary(t *testing.T) {
+	event := Event{
+		ID:          "special-chars",
+		Summary:     "Meeting: \"Important\" & <Urgent>",
+		Description: "Contains 'quotes' and other special chars",
+	}
+
+	item := EventToItem(event, "space-1", core.HatProfessional)
+
+	if item.Subject != "Meeting: \"Important\" & <Urgent>" {
+		t.Errorf("Subject = %q, expected special characters preserved", item.Subject)
+	}
+	if item.Body != "Contains 'quotes' and other special chars" {
+		t.Errorf("Body = %q, expected special characters preserved", item.Body)
+	}
+}
+
+func TestEventToItem_UnicodeContent(t *testing.T) {
+	event := Event{
+		ID:          "unicode-event",
+		Summary:     "会议 - Meeting 日本語",
+		Description: "Emoji content: 📅🎉✅",
+		Organizer:   "user@例え.jp",
+	}
+
+	item := EventToItem(event, "space-1", core.HatPersonal)
+
+	if item.Subject != "会议 - Meeting 日本語" {
+		t.Errorf("Subject = %q, expected unicode preserved", item.Subject)
+	}
+	if item.Body != "Emoji content: 📅🎉✅" {
+		t.Errorf("Body = %q, expected emojis preserved", item.Body)
+	}
+	if item.From != "user@例え.jp" {
+		t.Errorf("From = %q, expected unicode email preserved", item.From)
+	}
+}
