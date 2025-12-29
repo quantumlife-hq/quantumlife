@@ -27,6 +27,29 @@ func TestNew(t *testing.T) {
 			t.Error("expected nil space")
 		}
 	})
+
+	t.Run("non-nil space returns server with space", func(t *testing.T) {
+		// Create a minimal Space using NewSpace
+		space := finance.NewSpace(finance.SpaceConfig{
+			ID:   "test-finance",
+			Name: "Test Finance",
+		})
+		srv := New(space)
+		if srv == nil {
+			t.Fatal("New(space) returned nil server")
+		}
+		if srv.space == nil {
+			t.Error("expected non-nil space")
+		}
+		if srv.Server == nil {
+			t.Error("Server is nil")
+		}
+
+		info := srv.Info()
+		if info.Name != "finance" {
+			t.Errorf("expected name 'finance', got %q", info.Name)
+		}
+	})
 }
 
 func TestNewWithMockSpace(t *testing.T) {
