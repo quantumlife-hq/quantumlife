@@ -738,3 +738,281 @@ func BenchmarkManager_Count(b *testing.B) {
 		_, _ = m.Count()
 	}
 }
+
+// --- Tests for Store/Retrieve with nil embedder ---
+
+func TestManager_Store_NilEmbedder(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil) // nil embedder and vectors
+
+	memory := &core.Memory{
+		Type:       core.MemoryTypeEpisodic,
+		Content:    "Test memory content",
+		HatID:      core.HatProfessional,
+		Importance: 0.5,
+	}
+
+	// Store should return nil (no error) when embedder is nil
+	err := m.Store(context.Background(), memory)
+	if err != nil {
+		t.Errorf("Store with nil embedder should return nil, got: %v", err)
+	}
+
+	// Memory should NOT be stored in database (since embedder is required)
+	count, _ := m.Count()
+	if count != 0 {
+		t.Errorf("Expected 0 memories stored when embedder is nil, got %d", count)
+	}
+}
+
+func TestManager_Retrieve_NilEmbedder(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil) // nil embedder and vectors
+
+	// Retrieve should return nil, nil when embedder is nil
+	memories, err := m.Retrieve(context.Background(), "test query", RetrieveOptions{})
+	if err != nil {
+		t.Errorf("Retrieve with nil embedder should return nil error, got: %v", err)
+	}
+	if memories != nil {
+		t.Errorf("Retrieve with nil embedder should return nil memories, got: %v", memories)
+	}
+}
+
+func TestManager_Retrieve_NilEmbedder_WithOptions(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil)
+
+	// Test with various options - should still return nil
+	opts := RetrieveOptions{
+		HatID: core.HatProfessional,
+		Type:  core.MemoryTypeEpisodic,
+		Limit: 10,
+	}
+
+	memories, err := m.Retrieve(context.Background(), "search query", opts)
+	if err != nil {
+		t.Errorf("Retrieve should return nil error, got: %v", err)
+	}
+	if memories != nil {
+		t.Errorf("Retrieve should return nil memories, got: %v", memories)
+	}
+}
+
+// --- Tests for StoreEpisodic/StoreSemantic/StoreProcedural ---
+
+func TestManager_StoreEpisodic_NilEmbedder(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil)
+
+	err := m.StoreEpisodic(
+		context.Background(),
+		"Something happened today",
+		core.HatProfessional,
+		[]core.ItemID{"item-1", "item-2"},
+	)
+
+	// Should return nil since embedder is nil
+	if err != nil {
+		t.Errorf("StoreEpisodic with nil embedder should return nil, got: %v", err)
+	}
+}
+
+func TestManager_StoreSemantic_NilEmbedder(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil)
+
+	err := m.StoreSemantic(
+		context.Background(),
+		"The capital of France is Paris",
+		core.HatPersonal,
+		0.9,
+	)
+
+	// Should return nil since embedder is nil
+	if err != nil {
+		t.Errorf("StoreSemantic with nil embedder should return nil, got: %v", err)
+	}
+}
+
+func TestManager_StoreProcedural_NilEmbedder(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil)
+
+	err := m.StoreProcedural(
+		context.Background(),
+		"To make coffee: 1. Boil water, 2. Add grounds, 3. Pour water",
+		core.HatPersonal,
+	)
+
+	// Should return nil since embedder is nil
+	if err != nil {
+		t.Errorf("StoreProcedural with nil embedder should return nil, got: %v", err)
+	}
+}
+
+// --- Test Store with only embedder (no vectors) ---
+
+func TestManager_Store_NilVectors(t *testing.T) {
+	db := testDB(t)
+	mockServer := mockEmbeddingsServer(t)
+
+	embedder := embeddings.NewService(embeddings.Config{
+		BaseURL: mockServer.URL,
+		Model:   "test-model",
+	})
+
+	// Create manager with embedder but nil vectors
+	m := NewManager(db, nil, embedder)
+
+	memory := &core.Memory{
+		Type:       core.MemoryTypeEpisodic,
+		Content:    "Test memory content",
+		HatID:      core.HatProfessional,
+		Importance: 0.5,
+	}
+
+	// Store should return nil when vectors is nil
+	err := m.Store(context.Background(), memory)
+	if err != nil {
+		t.Errorf("Store with nil vectors should return nil, got: %v", err)
+	}
+}
+
+func TestManager_Retrieve_NilVectors(t *testing.T) {
+	db := testDB(t)
+	mockServer := mockEmbeddingsServer(t)
+
+	embedder := embeddings.NewService(embeddings.Config{
+		BaseURL: mockServer.URL,
+		Model:   "test-model",
+	})
+
+	// Create manager with embedder but nil vectors
+	m := NewManager(db, nil, embedder)
+
+	// Retrieve should return nil, nil when vectors is nil
+	memories, err := m.Retrieve(context.Background(), "test query", RetrieveOptions{})
+	if err != nil {
+		t.Errorf("Retrieve with nil vectors should return nil error, got: %v", err)
+	}
+	if memories != nil {
+		t.Errorf("Retrieve with nil vectors should return nil memories, got: %v", memories)
+	}
+}
+
+// --- Test recordAccess ---
+
+func TestManager_RecordAccess_Multiple(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil)
+
+	// Insert a memory with access count 0
+	insertTestMemory(t, db, &core.Memory{
+		ID:          "multi-access",
+		Type:        core.MemoryTypeEpisodic,
+		Content:     "Test",
+		HatID:       core.HatProfessional,
+		AccessCount: 0,
+	})
+
+	// Record multiple accesses
+	m.recordAccess("multi-access")
+	m.recordAccess("multi-access")
+	m.recordAccess("multi-access")
+
+	// Verify access count increased to 3
+	mem, err := m.GetByID("multi-access")
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if mem.AccessCount != 3 {
+		t.Errorf("AccessCount = %d, want 3", mem.AccessCount)
+	}
+}
+
+func TestManager_RecordAccess_NonExistent(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil)
+
+	// Recording access for non-existent memory should not panic
+	m.recordAccess("non-existent-id")
+	// No error expected, it's a no-op
+}
+
+// --- Test GetRecent with various data ---
+
+func TestManager_GetRecent_WithAllFields(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil)
+
+	now := time.Now().UTC()
+	insertTestMemory(t, db, &core.Memory{
+		ID:          "recent-full",
+		Type:        core.MemoryTypeSemantic,
+		Content:     "Full memory content",
+		Summary:     "A summary",
+		HatID:       core.HatPersonal,
+		SourceItems: []core.ItemID{"src-1"},
+		Entities:    []string{"entity-1"},
+		Importance:  0.8,
+		AccessCount: 10,
+		DecayFactor: 0.05,
+		EmbeddingID: "emb-full",
+		CreatedAt:   now,
+	})
+
+	memories, err := m.GetRecent(10)
+	if err != nil {
+		t.Fatalf("GetRecent: %v", err)
+	}
+	if len(memories) != 1 {
+		t.Fatalf("got %d memories, want 1", len(memories))
+	}
+
+	mem := memories[0]
+	if mem.ID != "recent-full" {
+		t.Errorf("ID = %q, want recent-full", mem.ID)
+	}
+	if mem.Type != core.MemoryTypeSemantic {
+		t.Errorf("Type = %q, want semantic", mem.Type)
+	}
+	if mem.Summary != "A summary" {
+		t.Errorf("Summary = %q, want 'A summary'", mem.Summary)
+	}
+	if len(mem.SourceItems) != 1 {
+		t.Errorf("SourceItems len = %d, want 1", len(mem.SourceItems))
+	}
+	if len(mem.Entities) != 1 {
+		t.Errorf("Entities len = %d, want 1", len(mem.Entities))
+	}
+	if mem.EmbeddingID != "emb-full" {
+		t.Errorf("EmbeddingID = %q, want emb-full", mem.EmbeddingID)
+	}
+}
+
+// --- Test CountByType edge cases ---
+
+func TestManager_CountByType_SingleType(t *testing.T) {
+	db := testDB(t)
+	m := NewManager(db, nil, nil)
+
+	// Insert only episodic memories
+	insertTestMemory(t, db, &core.Memory{ID: "ep-1", Type: core.MemoryTypeEpisodic, Content: "E1", HatID: core.HatProfessional})
+	insertTestMemory(t, db, &core.Memory{ID: "ep-2", Type: core.MemoryTypeEpisodic, Content: "E2", HatID: core.HatProfessional})
+
+	counts, err := m.CountByType()
+	if err != nil {
+		t.Fatalf("CountByType: %v", err)
+	}
+
+	if len(counts) != 1 {
+		t.Errorf("Expected 1 type in counts, got %d", len(counts))
+	}
+	if counts[core.MemoryTypeEpisodic] != 2 {
+		t.Errorf("Episodic count = %d, want 2", counts[core.MemoryTypeEpisodic])
+	}
+	if counts[core.MemoryTypeSemantic] != 0 {
+		// Should be 0 (not in map)
+	}
+}
