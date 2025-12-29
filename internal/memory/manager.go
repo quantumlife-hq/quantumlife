@@ -34,6 +34,11 @@ func NewManager(db *storage.DB, vectors *vectors.Store, embedder *embeddings.Ser
 
 // Store stores a new memory
 func (m *Manager) Store(ctx context.Context, memory *core.Memory) error {
+	// Skip if embeddings not configured
+	if m.embedder == nil || m.vectors == nil {
+		return nil
+	}
+
 	// Generate ID if not set
 	if memory.ID == "" {
 		memory.ID = uuid.New().String()
@@ -98,6 +103,11 @@ func (m *Manager) Store(ctx context.Context, memory *core.Memory) error {
 
 // Retrieve finds relevant memories by semantic search
 func (m *Manager) Retrieve(ctx context.Context, query string, opts RetrieveOptions) ([]*core.Memory, error) {
+	// Return empty if embeddings not configured
+	if m.embedder == nil || m.vectors == nil {
+		return nil, nil
+	}
+
 	// Generate query embedding
 	embedding, err := m.embedder.Embed(ctx, query)
 	if err != nil {

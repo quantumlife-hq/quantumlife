@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -655,5 +656,554 @@ func TestStats_Fields(t *testing.T) {
 	}
 	if stats.MemoryByType[core.MemoryTypeEpisodic] != 30 {
 		t.Errorf("MemoryByType[Episodic] = %d, want 30", stats.MemoryByType[core.MemoryTypeEpisodic])
+	}
+}
+
+// =============================================================================
+// Agent Chat Tests
+// =============================================================================
+
+func TestAgent_Chat_WithMockLLM(t *testing.T) {
+	db := testDB(t)
+
+	// Mock LLM server that returns a response
+	mockResponse := "Hello! I'm your QuantumLife agent. How can I help you today?"
+	server := mockLLMServer(t, mockResponse)
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+		Model:   "test-model",
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test User"},
+		DB:        db,
+		LLMClient: llmClient,
+		// Note: No Vectors/Embedder - memory manager handles nil gracefully
+	})
+
+	response, err := agent.Chat(context.Background(), "Hello!", nil)
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+
+	if response != mockResponse {
+		t.Errorf("Chat() = %q, want %q", response, mockResponse)
+	}
+}
+
+func TestAgent_Chat_WithHistory(t *testing.T) {
+	db := testDB(t)
+
+	mockResponse := "I remember you mentioned cats earlier!"
+	server := mockLLMServer(t, mockResponse)
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test"},
+		DB:        db,
+		LLMClient: llmClient,
+	})
+
+	history := []llm.Message{
+		{Role: "user", Content: "I love cats"},
+		{Role: "assistant", Content: "Cats are wonderful!"},
+	}
+
+	response, err := agent.Chat(context.Background(), "Do you remember what I said?", history)
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+
+	if response != mockResponse {
+		t.Errorf("Chat() = %q, want %q", response, mockResponse)
+	}
+}
+
+// =============================================================================
+// Agent ProcessItem Tests
+// =============================================================================
+
+func TestAgent_ProcessItem_WithMockLLM(t *testing.T) {
+	db := testDB(t)
+
+	// Mock LLM that returns classification
+	mockResponse := `{
+		"hat_id": "professional",
+		"confidence": 0.9,
+		"priority": 2,
+		"sentiment": "neutral",
+		"summary": "Work email about meeting",
+		"entities": ["Project X"],
+		"action_items": ["Schedule meeting"],
+		"reasoning": "Work-related content"
+	}`
+	server := mockLLMServer(t, mockResponse)
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test"},
+		DB:        db,
+		LLMClient: llmClient,
+	})
+
+	// Create item in store first
+	itemStore := storage.NewItemStore(db)
+	item := &core.Item{
+		ID:      "test-item-process",
+		Type:    core.ItemTypeEmail,
+		Status:  core.ItemStatusPending,
+		HatID:   core.HatPersonal,
+		From:    "boss@company.com",
+		Subject: "Project X Meeting",
+		Body:    "Let's schedule a meeting for Project X.",
+	}
+	itemStore.Create(item)
+
+	err := agent.ProcessItem(context.Background(), item)
+	if err != nil {
+		t.Fatalf("ProcessItem() error = %v", err)
+	}
+
+	// Verify item was updated
+	if item.HatID != core.HatProfessional {
+		t.Errorf("item.HatID = %q, want %q", item.HatID, core.HatProfessional)
+	}
+	if item.Status != core.ItemStatusRouted {
+		t.Errorf("item.Status = %q, want %q", item.Status, core.ItemStatusRouted)
+	}
+	if item.Priority != 2 {
+		t.Errorf("item.Priority = %d, want 2", item.Priority)
+	}
+	if item.Summary != "Work email about meeting" {
+		t.Errorf("item.Summary = %q, want 'Work email about meeting'", item.Summary)
+	}
+}
+
+// =============================================================================
+// Agent Learn/Remember Tests
+// =============================================================================
+
+func TestAgent_Learn(t *testing.T) {
+	db := testDB(t)
+
+	agent := New(Config{
+		Identity: &core.You{ID: "test", Name: "Test"},
+		DB:       db,
+		// No Vectors/Embedder - memory manager handles nil gracefully
+	})
+
+	// Learn should succeed even without embeddings (graceful degradation)
+	err := agent.Learn(context.Background(), "The sky is blue", core.HatPersonal)
+	if err != nil {
+		t.Fatalf("Learn() error = %v", err)
+	}
+}
+
+func TestAgent_Remember(t *testing.T) {
+	db := testDB(t)
+
+	agent := New(Config{
+		Identity: &core.You{ID: "test", Name: "Test"},
+		DB:       db,
+	})
+
+	// Remember should return empty without embeddings (graceful degradation)
+	memories, err := agent.Remember(context.Background(), "sky color", core.HatPersonal)
+	if err != nil {
+		t.Fatalf("Remember() error = %v", err)
+	}
+	// Memories should be nil/empty without embeddings
+	if len(memories) != 0 {
+		t.Errorf("Remember() returned %d memories, want 0 without embeddings", len(memories))
+	}
+}
+
+func TestAgent_Remember_WithoutHat(t *testing.T) {
+	db := testDB(t)
+
+	agent := New(Config{
+		Identity: &core.You{ID: "test", Name: "Test"},
+		DB:       db,
+	})
+
+	// Test with empty hat ID - should still work
+	memories, err := agent.Remember(context.Background(), "query", "")
+	if err != nil {
+		t.Fatalf("Remember() error = %v", err)
+	}
+	_ = memories
+}
+
+// =============================================================================
+// Agent CreateItem Tests
+// =============================================================================
+
+func TestAgent_CreateItem_WithMockLLM(t *testing.T) {
+	db := testDB(t)
+
+	mockResponse := `{
+		"hat_id": "health",
+		"confidence": 0.85,
+		"priority": 1,
+		"sentiment": "neutral",
+		"summary": "Doctor appointment reminder",
+		"entities": ["Dr. Smith"],
+		"action_items": ["Confirm appointment"],
+		"reasoning": "Medical appointment"
+	}`
+	server := mockLLMServer(t, mockResponse)
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test"},
+		DB:        db,
+		LLMClient: llmClient,
+	})
+
+	item, err := agent.CreateItem(
+		context.Background(),
+		core.ItemTypeEvent,
+		"clinic@health.com",
+		"Appointment with Dr. Smith",
+		"Your appointment is scheduled for tomorrow at 10am.",
+	)
+
+	if err != nil {
+		t.Fatalf("CreateItem() error = %v", err)
+	}
+
+	if item == nil {
+		t.Fatal("CreateItem() returned nil item")
+	}
+	if item.ID == "" {
+		t.Error("item.ID should not be empty")
+	}
+	if item.Type != core.ItemTypeEvent {
+		t.Errorf("item.Type = %q, want %q", item.Type, core.ItemTypeEvent)
+	}
+	if item.HatID != core.HatHealth {
+		t.Errorf("item.HatID = %q, want %q", item.HatID, core.HatHealth)
+	}
+	if item.Status != core.ItemStatusRouted {
+		t.Errorf("item.Status = %q, want %q", item.Status, core.ItemStatusRouted)
+	}
+}
+
+// =============================================================================
+// ChatSession SendMessage Tests
+// =============================================================================
+
+func TestChatSession_SendMessage_WithMockLLM(t *testing.T) {
+	db := testDB(t)
+
+	mockResponse := "I'm doing great, thank you for asking!"
+	server := mockLLMServer(t, mockResponse)
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test"},
+		DB:        db,
+		LLMClient: llmClient,
+	})
+
+	session := NewChatSession(agent)
+
+	response, err := session.SendMessage(context.Background(), "How are you?")
+	if err != nil {
+		t.Fatalf("SendMessage() error = %v", err)
+	}
+
+	if response != mockResponse {
+		t.Errorf("SendMessage() = %q, want %q", response, mockResponse)
+	}
+
+	// Check history was updated
+	if len(session.history) != 2 {
+		t.Errorf("history length = %d, want 2", len(session.history))
+	}
+	if session.history[0].Role != "user" {
+		t.Errorf("history[0].Role = %q, want 'user'", session.history[0].Role)
+	}
+	if session.history[1].Role != "assistant" {
+		t.Errorf("history[1].Role = %q, want 'assistant'", session.history[1].Role)
+	}
+}
+
+func TestChatSession_SendMessage_MultipleMessages(t *testing.T) {
+	db := testDB(t)
+
+	responses := []string{
+		"Hello! Nice to meet you.",
+		"The weather is nice today.",
+		"I remember you're Test User!",
+	}
+	responseIdx := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		response := map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": responses[responseIdx]},
+			},
+			"stop_reason": "end_turn",
+		}
+		if responseIdx < len(responses)-1 {
+			responseIdx++
+		}
+		json.NewEncoder(w).Encode(response)
+	}))
+	t.Cleanup(server.Close)
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test User"},
+		DB:        db,
+		LLMClient: llmClient,
+	})
+
+	session := NewChatSession(agent)
+
+	// Send multiple messages
+	messages := []string{"Hi!", "What's the weather?", "Do you remember my name?"}
+	for i, msg := range messages {
+		_, err := session.SendMessage(context.Background(), msg)
+		if err != nil {
+			t.Fatalf("SendMessage(%d) error = %v", i, err)
+		}
+	}
+
+	// History should have 6 messages (3 user + 3 assistant)
+	if len(session.history) != 6 {
+		t.Errorf("history length = %d, want 6", len(session.history))
+	}
+}
+
+// =============================================================================
+// Agent Tick Tests (through loop behavior)
+// =============================================================================
+
+func TestAgent_Tick_ProcessesPendingItems(t *testing.T) {
+	db := testDB(t)
+
+	mockResponse := `{
+		"hat_id": "professional",
+		"confidence": 0.9,
+		"priority": 2,
+		"sentiment": "neutral",
+		"summary": "Work task",
+		"entities": [],
+		"action_items": [],
+		"reasoning": "Work"
+	}`
+	server := mockLLMServer(t, mockResponse)
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test"},
+		DB:        db,
+		LLMClient: llmClient,
+	})
+
+	// Create pending items
+	itemStore := storage.NewItemStore(db)
+	for i := 0; i < 3; i++ {
+		itemStore.Create(&core.Item{
+			ID:      core.ItemID(fmt.Sprintf("pending-%d", i)),
+			Type:    core.ItemTypeEmail,
+			Status:  core.ItemStatusPending,
+			HatID:   core.HatPersonal,
+			Subject: fmt.Sprintf("Pending item %d", i),
+			From:    "test@test.com",
+		})
+	}
+
+	// Call tick directly
+	agent.tick(context.Background())
+
+	// Verify items were processed
+	for i := 0; i < 3; i++ {
+		item, err := itemStore.GetByID(core.ItemID(fmt.Sprintf("pending-%d", i)))
+		if err != nil {
+			t.Fatalf("Get item %d error = %v", i, err)
+		}
+		if item.Status != core.ItemStatusRouted {
+			t.Errorf("item %d status = %q, want %q", i, item.Status, core.ItemStatusRouted)
+		}
+	}
+}
+
+func TestAgent_Tick_NoPendingItems(t *testing.T) {
+	db := testDB(t)
+
+	agent := New(Config{
+		Identity: &core.You{ID: "test", Name: "Test"},
+		DB:       db,
+	})
+
+	// Should not panic with no pending items
+	agent.tick(context.Background())
+}
+
+// =============================================================================
+// Agent Loop Tests
+// =============================================================================
+
+func TestAgent_Loop_StopsOnContext(t *testing.T) {
+	db := testDB(t)
+
+	agent := New(Config{
+		Identity: &core.You{ID: "test", Name: "Test"},
+		DB:       db,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Start loop in goroutine
+	done := make(chan struct{})
+	go func() {
+		agent.loop(ctx)
+		close(done)
+	}()
+
+	// Cancel context
+	cancel()
+
+	// Loop should exit
+	select {
+	case <-done:
+		// Success
+	case <-time.After(1 * time.Second):
+		t.Error("loop did not exit after context cancel")
+	}
+}
+
+func TestAgent_Loop_StopsOnStopChannel(t *testing.T) {
+	db := testDB(t)
+
+	agent := New(Config{
+		Identity: &core.You{ID: "test", Name: "Test"},
+		DB:       db,
+	})
+
+	ctx := context.Background()
+
+	// Start loop in goroutine
+	done := make(chan struct{})
+	go func() {
+		agent.loop(ctx)
+		close(done)
+	}()
+
+	// Close stop channel
+	close(agent.stopCh)
+
+	// Loop should exit
+	select {
+	case <-done:
+		// Success
+	case <-time.After(1 * time.Second):
+		t.Error("loop did not exit after stop channel close")
+	}
+}
+
+// =============================================================================
+// Benchmarks
+// =============================================================================
+
+func BenchmarkAgent_Chat(b *testing.B) {
+	db, _ := storage.Open(storage.Config{InMemory: true})
+	db.Migrate()
+	defer db.Close()
+
+	mockResponse := "This is a benchmark response"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"content":     []map[string]interface{}{{"type": "text", "text": mockResponse}},
+			"stop_reason": "end_turn",
+		})
+	}))
+	defer server.Close()
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test"},
+		DB:        db,
+		LLMClient: llmClient,
+	})
+
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		agent.Chat(ctx, "Hello", nil)
+	}
+}
+
+func BenchmarkChatSession_SendMessage(b *testing.B) {
+	db, _ := storage.Open(storage.Config{InMemory: true})
+	db.Migrate()
+	defer db.Close()
+
+	mockResponse := "Response"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"content":     []map[string]interface{}{{"type": "text", "text": mockResponse}},
+			"stop_reason": "end_turn",
+		})
+	}))
+	defer server.Close()
+
+	llmClient := llm.NewClient(llm.Config{
+		APIKey:  "test-key",
+		BaseURL: server.URL,
+	})
+
+	agent := New(Config{
+		Identity:  &core.You{ID: "test", Name: "Test"},
+		DB:        db,
+		LLMClient: llmClient,
+	})
+
+	session := NewChatSession(agent)
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		session.SendMessage(ctx, "Hello")
+		if i%10 == 0 {
+			session.Clear() // Prevent history from growing too large
+		}
 	}
 }
