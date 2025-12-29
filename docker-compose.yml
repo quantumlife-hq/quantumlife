@@ -2,7 +2,7 @@ services:
   # Nango - OAuth/Token lifecycle for 500+ APIs (self-hosted)
   # Auth infrastructure (Nango) is separate from authorization/agency (QuantumLife)
   nango:
-    image: nangohq/nango:latest
+    image: nangohq/nango-server:latest
     ports:
       - "3003:3003"  # Nango server
     volumes:
@@ -13,8 +13,8 @@ services:
       - NANGO_CALLBACK_URL=${NANGO_CALLBACK_URL:-http://localhost:3003/oauth/callback}
       - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-quantumlife-nango-secret-key-change-in-prod}
       - NANGO_PUBLIC_KEY=${NANGO_PUBLIC_KEY:-quantumlife-nango-public-key-change-in-prod}
-      # Encryption for stored tokens
-      - NANGO_ENCRYPTION_KEY=${NANGO_ENCRYPTION_KEY:-32-char-encryption-key-changeme!}
+      # Encryption for stored tokens (base64-encoded 256-bit key)
+      - NANGO_ENCRYPTION_KEY=${NANGO_ENCRYPTION_KEY:-VFMN2iK0MAArZlbai3qnpKuVTaGDYGnGdstdG/wgXCc=}
     restart: unless-stopped
     networks:
       - quantumlife-net

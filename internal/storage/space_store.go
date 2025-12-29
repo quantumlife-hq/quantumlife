@@ -65,6 +65,12 @@ func (s *SpaceStore) Create(record *SpaceRecord) error {
 		authSource = AuthSourceCustom
 	}
 
+	// Handle NULL for optional foreign key (empty string -> NULL)
+	var defaultHatID interface{}
+	if record.DefaultHatID != "" {
+		defaultHatID = record.DefaultHatID
+	}
+
 	_, err = s.db.conn.Exec(`
 		INSERT INTO spaces (
 			id, type, provider, name, is_connected, sync_status,
@@ -79,7 +85,7 @@ func (s *SpaceStore) Create(record *SpaceRecord) error {
 		record.IsConnected,
 		record.SyncStatus,
 		record.SyncCursor,
-		record.DefaultHatID,
+		defaultHatID, // NULL if empty
 		string(settings),
 		authSource,
 		record.NangoConnectionID,
