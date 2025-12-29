@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+// Use relative URL so nginx proxy handles it, or override with VITE_API_URL for dev
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 export class ApiError extends Error {
   status: number;
