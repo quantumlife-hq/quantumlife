@@ -4,6 +4,8 @@ package vectors
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/qdrant/go-client/qdrant"
 )
@@ -21,11 +23,21 @@ type Config struct {
 	UseTLS bool   // Use TLS
 }
 
-// DefaultConfig returns sensible defaults
+// DefaultConfig returns sensible defaults, reading from env vars if set
 func DefaultConfig() Config {
+	host := os.Getenv("QDRANT_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port := 6334
+	if p := os.Getenv("QDRANT_PORT"); p != "" {
+		if parsed, err := strconv.Atoi(p); err == nil {
+			port = parsed
+		}
+	}
 	return Config{
-		Host: "localhost",
-		Port: 6334,
+		Host: host,
+		Port: port,
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -25,11 +26,19 @@ type Config struct {
 	Timeout time.Duration // Request timeout
 }
 
-// DefaultConfig returns sensible defaults
+// DefaultConfig returns sensible defaults, reading from env vars if set
 func DefaultConfig() Config {
+	baseURL := os.Getenv("OLLAMA_HOST")
+	if baseURL == "" {
+		baseURL = "http://localhost:11434"
+	}
+	model := os.Getenv("OLLAMA_EMBED_MODEL")
+	if model == "" {
+		model = "nomic-embed-text"
+	}
 	return Config{
-		BaseURL: "http://localhost:11434",
-		Model:   "nomic-embed-text",
+		BaseURL: baseURL,
+		Model:   model,
 		Timeout: 30 * time.Second,
 	}
 }
