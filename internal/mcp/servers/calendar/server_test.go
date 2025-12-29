@@ -4,11 +4,56 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	calclient "github.com/quantumlife/quantumlife/internal/spaces/calendar"
 )
+
+// ============================================================================
+// Constructor Tests
+// ============================================================================
+
+func TestNew(t *testing.T) {
+	t.Run("nil client returns nil", func(t *testing.T) {
+		srv := New(nil)
+		if srv != nil {
+			t.Error("expected nil server for nil client")
+		}
+	})
+}
+
+func TestNewWithMockClient(t *testing.T) {
+	t.Run("creates server with mock client", func(t *testing.T) {
+		mock := &MockCalendarClient{}
+		srv := NewWithMockClient(mock)
+		if srv == nil {
+			t.Fatal("NewWithMockClient returned nil")
+		}
+		if srv.Server == nil {
+			t.Error("Server is nil")
+		}
+		if srv.client == nil {
+			t.Error("client is nil")
+		}
+
+		info := srv.Info()
+		if info.Name != "calendar" {
+			t.Errorf("expected name 'calendar', got %q", info.Name)
+		}
+		if info.Version != "1.0.0" {
+			t.Errorf("expected version '1.0.0', got %q", info.Version)
+		}
+	})
+
+	t.Run("creates server with nil mock", func(t *testing.T) {
+		srv := NewWithMockClient(nil)
+		if srv == nil {
+			t.Fatal("NewWithMockClient returned nil")
+		}
+	})
+}
 
 // MockCalendarClient implements a mock Calendar client for testing.
 type MockCalendarClient struct {
@@ -1148,5 +1193,739 @@ func TestFormatDuration(t *testing.T) {
 				t.Errorf("formatDuration(%v) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+// ============================================================================
+// Resource Handler Tests
+// ============================================================================
+
+func TestCalendarServer_TodayResource(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(*MockCalendarClient)
+		wantErr bool
+	}{
+		{
+			name: "get today resource successfully",
+			setup: func(m *MockCalendarClient) {
+				m.GetTodayEventsFunc = func(ctx context.Context) ([]calclient.Event, error) {
+					return sampleEvents(), nil
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty today events",
+			setup: func(m *MockCalendarClient) {
+				m.GetTodayEventsFunc = func(ctx context.Context) ([]calclient.Event, error) {
+					return []calclient.Event{}, nil
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "API error",
+			setup: func(m *MockCalendarClient) {
+				m.GetTodayEventsFunc = func(ctx context.Context) ([]calclient.Event, error) {
+					return nil, errors.New("API error")
+				}
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &MockCalendarClient{}
+			if tt.setup != nil {
+				tt.setup(mock)
+			}
+
+			srv := NewWithMockClient(mock)
+			ctx := context.Background()
+
+			result, err := srv.handleTodayResource(ctx, "calendar://today")
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected result, got nil")
+			}
+			if result.URI != "calendar://today" {
+				t.Errorf("expected URI 'calendar://today', got %q", result.URI)
+			}
+			if result.MimeType != "application/json" {
+				t.Errorf("expected MimeType 'application/json', got %q", result.MimeType)
+			}
+		})
+	}
+}
+
+func TestCalendarServer_WeekResource(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(*MockCalendarClient)
+		wantErr bool
+	}{
+		{
+			name: "get week resource successfully",
+			setup: func(m *MockCalendarClient) {
+				m.GetUpcomingEventsFunc = func(ctx context.Context, days int) ([]calclient.Event, error) {
+					if days != 7 {
+						t.Errorf("expected 7 days, got %d", days)
+					}
+					return sampleEvents(), nil
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty week events",
+			setup: func(m *MockCalendarClient) {
+				m.GetUpcomingEventsFunc = func(ctx context.Context, days int) ([]calclient.Event, error) {
+					return []calclient.Event{}, nil
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "API error",
+			setup: func(m *MockCalendarClient) {
+				m.GetUpcomingEventsFunc = func(ctx context.Context, days int) ([]calclient.Event, error) {
+					return nil, errors.New("API error")
+				}
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &MockCalendarClient{}
+			if tt.setup != nil {
+				tt.setup(mock)
+			}
+
+			srv := NewWithMockClient(mock)
+			ctx := context.Background()
+
+			result, err := srv.handleWeekResource(ctx, "calendar://week")
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected result, got nil")
+			}
+			if result.URI != "calendar://week" {
+				t.Errorf("expected URI 'calendar://week', got %q", result.URI)
+			}
+			if result.MimeType != "application/json" {
+				t.Errorf("expected MimeType 'application/json', got %q", result.MimeType)
+			}
+		})
+	}
+}
+
+func TestCalendarServer_ResourceRegistration(t *testing.T) {
+	mock := &MockCalendarClient{}
+	srv := NewWithMockClient(mock)
+
+	resources := srv.Registry().ListResources()
+
+	expectedResources := map[string]string{
+		"calendar://today": "Today's Schedule",
+		"calendar://week":  "This Week's Schedule",
+	}
+
+	for _, r := range resources {
+		if expectedName, ok := expectedResources[r.URI]; ok {
+			if r.Name != expectedName {
+				t.Errorf("resource %q name = %q, want %q", r.URI, r.Name, expectedName)
+			}
+			delete(expectedResources, r.URI)
+		}
+	}
+
+	for uri := range expectedResources {
+		t.Errorf("expected resource %q not registered", uri)
+	}
+}
+
+// ============================================================================
+// Additional Handler Edge Case Tests
+// ============================================================================
+
+func TestCalendarServer_ListEvents_InvalidEndDate(t *testing.T) {
+	mock := &MockCalendarClient{}
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"start": "2024-01-15",
+		"end":   "invalid-date",
+	})
+	result, err := srv.handleListEvents(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for invalid end date")
+	}
+}
+
+func TestCalendarServer_CreateEvent_InvalidEndDate(t *testing.T) {
+	mock := &MockCalendarClient{}
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"summary": "Test Event",
+		"start":   "2024-01-15 14:00",
+		"end":     "invalid-end",
+	})
+	result, err := srv.handleCreateEvent(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for invalid end date")
+	}
+}
+
+func TestCalendarServer_UpdateEvent_InvalidEndTime(t *testing.T) {
+	mock := &MockCalendarClient{}
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"event_id": "event-001",
+		"end":      "invalid-end",
+	})
+	result, err := srv.handleUpdateEvent(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for invalid end time")
+	}
+}
+
+func TestCalendarServer_FindFreeTime_InvalidEndDate(t *testing.T) {
+	mock := &MockCalendarClient{}
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"start": "2024-01-15",
+		"end":   "invalid-date",
+	})
+	result, err := srv.handleFindFreeTime(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for invalid end date")
+	}
+}
+
+func TestCalendarServer_CreateEvent_WithDuration(t *testing.T) {
+	mock := &MockCalendarClient{
+		CreateEventFunc: func(ctx context.Context, req calclient.CreateEventRequest) (*calclient.Event, error) {
+			// Verify duration was applied (60 minutes from start)
+			expectedEnd := req.Start.Add(90 * time.Minute)
+			if !req.End.Equal(expectedEnd) {
+				t.Errorf("expected end = %v, got %v", expectedEnd, req.End)
+			}
+			return &calclient.Event{
+				ID:      "event-001",
+				Summary: req.Summary,
+				Start:   req.Start,
+				End:     req.End,
+			}, nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"summary":          "Quick Meeting",
+		"start":            "2024-01-15 14:00",
+		"duration_minutes": 90,
+	})
+	result, err := srv.handleCreateEvent(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+}
+
+// ============================================================================
+// Format Function Tests
+// ============================================================================
+
+func TestFormatEvent_AllDay(t *testing.T) {
+	event := calclient.Event{
+		ID:       "event-allday",
+		Summary:  "Conference",
+		Start:    time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),
+		End:      time.Date(2024, 1, 16, 0, 0, 0, 0, time.UTC),
+		AllDay:   true,
+		Location: "Convention Center",
+		Status:   "confirmed",
+	}
+
+	info := formatEvent(event)
+
+	if info.ID != "event-allday" {
+		t.Errorf("expected ID 'event-allday', got %q", info.ID)
+	}
+	if info.Summary != "Conference" {
+		t.Errorf("expected Summary 'Conference', got %q", info.Summary)
+	}
+	if !info.AllDay {
+		t.Error("expected AllDay to be true")
+	}
+	// All-day events should use date format, not datetime
+	if info.Start != "Jan 15, 2024" {
+		t.Errorf("expected Start 'Jan 15, 2024', got %q", info.Start)
+	}
+}
+
+func TestFormatEvent_WithAttendees(t *testing.T) {
+	event := calclient.Event{
+		ID:      "event-001",
+		Summary: "Team Meeting",
+		Start:   time.Date(2024, 1, 15, 14, 0, 0, 0, time.UTC),
+		End:     time.Date(2024, 1, 15, 15, 0, 0, 0, time.UTC),
+		AllDay:  false,
+		Attendees: []calclient.Attendee{
+			{Email: "alice@example.com"},
+			{Email: "bob@example.com"},
+			{Email: "charlie@example.com"},
+		},
+	}
+
+	info := formatEvent(event)
+
+	if len(info.Attendees) != 3 {
+		t.Errorf("expected 3 attendees, got %d", len(info.Attendees))
+	}
+	if info.Attendees[0] != "alice@example.com" {
+		t.Errorf("expected first attendee 'alice@example.com', got %q", info.Attendees[0])
+	}
+}
+
+func TestFormatEvents(t *testing.T) {
+	events := []calclient.Event{
+		{ID: "event-001", Summary: "Event 1", Start: time.Now(), End: time.Now().Add(time.Hour)},
+		{ID: "event-002", Summary: "Event 2", Start: time.Now(), End: time.Now().Add(time.Hour)},
+	}
+
+	result := formatEvents(events)
+
+	if len(result) != 2 {
+		t.Errorf("expected 2 events, got %d", len(result))
+	}
+	if result[0].ID != "event-001" {
+		t.Errorf("expected first event ID 'event-001', got %q", result[0].ID)
+	}
+}
+
+func TestFormatEventTime(t *testing.T) {
+	t.Run("regular event", func(t *testing.T) {
+		event := calclient.Event{
+			Start:  time.Date(2024, 1, 15, 14, 0, 0, 0, time.UTC),
+			End:    time.Date(2024, 1, 15, 15, 30, 0, 0, time.UTC),
+			AllDay: false,
+		}
+
+		result := formatEventTime(event)
+		expected := "Jan 15, 2:00 PM - 3:30 PM"
+		if result != expected {
+			t.Errorf("expected %q, got %q", expected, result)
+		}
+	})
+
+	t.Run("all-day event", func(t *testing.T) {
+		event := calclient.Event{
+			Start:  time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),
+			End:    time.Date(2024, 1, 16, 0, 0, 0, 0, time.UTC),
+			AllDay: true,
+		}
+
+		result := formatEventTime(event)
+		expected := "Jan 15, 2024 (all day)"
+		if result != expected {
+			t.Errorf("expected %q, got %q", expected, result)
+		}
+	})
+}
+
+// ============================================================================
+// Additional Helper Function Tests
+// ============================================================================
+
+func TestParseDateRelative(t *testing.T) {
+	base := time.Date(2024, 1, 15, 9, 0, 0, 0, time.Local)
+
+	tests := []struct {
+		name     string
+		input    string
+		expected time.Time
+		wantErr  bool
+	}{
+		{
+			name:     "relative +7",
+			input:    "+7",
+			expected: base.AddDate(0, 0, 7),
+			wantErr:  false,
+		},
+		{
+			name:     "relative +14",
+			input:    "+14",
+			expected: base.AddDate(0, 0, 14),
+			wantErr:  false,
+		},
+		{
+			name:     "absolute date",
+			input:    "2024-01-20",
+			expected: time.Date(2024, 1, 20, 9, 0, 0, 0, time.Local),
+			wantErr:  false,
+		},
+		{
+			name:    "invalid format",
+			input:   "+abc",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseDateRelative(tt.input, base)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !got.Equal(tt.expected) {
+				t.Errorf("parseDateRelative(%q, base) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSplitAndTrim(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		sep      string
+		expected []string
+	}{
+		{
+			name:     "simple split",
+			input:    "a,b,c",
+			sep:      ",",
+			expected: []string{"a", "b", "c"},
+		},
+		{
+			name:     "with spaces",
+			input:    " alice@example.com , bob@example.com , charlie@example.com ",
+			sep:      ",",
+			expected: []string{"alice@example.com", "bob@example.com", "charlie@example.com"},
+		},
+		{
+			name:     "empty parts",
+			input:    "a,,b",
+			sep:      ",",
+			expected: []string{"a", "b"},
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			sep:      ",",
+			expected: nil,
+		},
+		{
+			name:     "only whitespace",
+			input:    "  ,  ,  ",
+			sep:      ",",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := splitAndTrim(tt.input, tt.sep)
+			if len(got) != len(tt.expected) {
+				t.Errorf("splitAndTrim(%q, %q) = %v (len %d), want %v (len %d)",
+					tt.input, tt.sep, got, len(got), tt.expected, len(tt.expected))
+				return
+			}
+			for i, v := range tt.expected {
+				if got[i] != v {
+					t.Errorf("splitAndTrim(%q, %q)[%d] = %q, want %q", tt.input, tt.sep, i, got[i], v)
+				}
+			}
+		})
+	}
+}
+
+// ============================================================================
+// Benchmark Tests
+// ============================================================================
+
+func BenchmarkFormatEvents(b *testing.B) {
+	events := make([]calclient.Event, 50)
+	for i := 0; i < 50; i++ {
+		events[i] = calclient.Event{
+			ID:       fmt.Sprintf("event-%d", i),
+			Summary:  fmt.Sprintf("Event %d", i),
+			Start:    time.Now().Add(time.Duration(i) * time.Hour),
+			End:      time.Now().Add(time.Duration(i+1) * time.Hour),
+			Location: "Conference Room",
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		formatEvents(events)
+	}
+}
+
+func BenchmarkFormatEvent(b *testing.B) {
+	event := calclient.Event{
+		ID:       "event-001",
+		Summary:  "Team Meeting",
+		Start:    time.Now(),
+		End:      time.Now().Add(time.Hour),
+		Location: "Conference Room A",
+		Attendees: []calclient.Attendee{
+			{Email: "alice@example.com"},
+			{Email: "bob@example.com"},
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		formatEvent(event)
+	}
+}
+
+func BenchmarkParseDate(b *testing.B) {
+	dates := []string{"today", "tomorrow", "2024-01-15", "yesterday"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, d := range dates {
+			parseDate(d)
+		}
+	}
+}
+
+func BenchmarkParseDateTime(b *testing.B) {
+	times := []string{"2024-01-15 14:00", "2024-01-15", "today", "tomorrow"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, t := range times {
+			parseDateTime(t)
+		}
+	}
+}
+
+func BenchmarkFormatDuration(b *testing.B) {
+	durations := []time.Duration{
+		30 * time.Minute,
+		1 * time.Hour,
+		90 * time.Minute,
+		3*time.Hour + 45*time.Minute,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, d := range durations {
+			formatDuration(d)
+		}
+	}
+}
+
+func BenchmarkSplitAndTrim(b *testing.B) {
+	input := "alice@example.com, bob@example.com, charlie@example.com, dave@example.com"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		splitAndTrim(input, ",")
+	}
+}
+
+func BenchmarkHandleListEvents(b *testing.B) {
+	mock := &MockCalendarClient{
+		GetEventsFunc: func(ctx context.Context, calendarID string, start, end time.Time) ([]calclient.Event, error) {
+			return sampleEvents(), nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+	argsJSON := []byte("{}")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		srv.handleListEvents(ctx, argsJSON)
+	}
+}
+
+// ============================================================================
+// Additional Coverage Tests
+// ============================================================================
+
+func TestCalendarServer_QuickAdd_AllDayEvent(t *testing.T) {
+	mock := &MockCalendarClient{
+		QuickAddFunc: func(ctx context.Context, calendarID, text string) (*calclient.Event, error) {
+			return &calclient.Event{
+				ID:      "event-quick-allday",
+				Summary: text,
+				Start:   time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),
+				End:     time.Date(2024, 1, 16, 0, 0, 0, 0, time.UTC),
+				AllDay:  true,
+			}, nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"text": "Conference on January 15",
+	})
+	result, err := srv.handleQuickAdd(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+}
+
+func TestCalendarServer_GetEvent_WithAttendees(t *testing.T) {
+	mock := &MockCalendarClient{
+		GetEventFunc: func(ctx context.Context, calendarID, eventID string) (*calclient.Event, error) {
+			return &calclient.Event{
+				ID:       eventID,
+				Summary:  "Team Meeting",
+				Start:    time.Now(),
+				End:      time.Now().Add(time.Hour),
+				Location: "Room 101",
+				Attendees: []calclient.Attendee{
+					{Email: "alice@example.com"},
+					{Email: "bob@example.com"},
+				},
+			}, nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"event_id": "event-001",
+	})
+	result, err := srv.handleGetEvent(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+}
+
+func TestCalendarServer_FindFreeTime_WithSlots(t *testing.T) {
+	now := time.Now()
+	mock := &MockCalendarClient{
+		FindFreeTimeFunc: func(ctx context.Context, start, end time.Time, durationMinutes int) ([]calclient.TimeSlot, error) {
+			return []calclient.TimeSlot{
+				{
+					Start:    now,
+					End:      now.Add(2 * time.Hour),
+					Duration: 2 * time.Hour,
+				},
+				{
+					Start:    now.Add(4 * time.Hour),
+					End:      now.Add(5*time.Hour + 30*time.Minute),
+					Duration: 90 * time.Minute,
+				},
+			}, nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"start": "2024-01-15",
+		"end":   "2024-01-16",
+	})
+	result, err := srv.handleFindFreeTime(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+}
+
+func TestCalendarServer_ListCalendars_WithCalendars(t *testing.T) {
+	mock := &MockCalendarClient{
+		ListCalendarsFunc: func(ctx context.Context) ([]calclient.CalendarInfo, error) {
+			return []calclient.CalendarInfo{
+				{ID: "primary", Summary: "Personal", Primary: true, AccessRole: "owner"},
+				{ID: "work", Summary: "Work", Primary: false, AccessRole: "writer"},
+				{ID: "family", Summary: "Family", Primary: false, AccessRole: "reader"},
+			}, nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	result, err := srv.handleListCalendars(ctx, []byte("{}"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
 	}
 }
