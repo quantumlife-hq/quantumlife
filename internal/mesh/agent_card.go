@@ -17,25 +17,55 @@ import (
 type AgentCapability string
 
 const (
-	CapabilityCalendar  AgentCapability = "calendar"
-	CapabilityEmail     AgentCapability = "email"
-	CapabilityTasks     AgentCapability = "tasks"
-	CapabilityFinance   AgentCapability = "finance"
-	CapabilityReminders AgentCapability = "reminders"
-	CapabilityNotes     AgentCapability = "notes"
+	CapabilityCalendar     AgentCapability = "calendar"
+	CapabilityEmail        AgentCapability = "email"
+	CapabilityTasks        AgentCapability = "tasks"
+	CapabilityFinance      AgentCapability = "finance"
+	CapabilityReminders    AgentCapability = "reminders"
+	CapabilityNotes        AgentCapability = "notes"
+	CapabilityHealth       AgentCapability = "health"       // Health & fitness data
+	CapabilityAvailability AgentCapability = "availability" // Just free/busy, not details
+	CapabilityLocation     AgentCapability = "location"     // Location sharing
+	CapabilityContacts     AgentCapability = "contacts"     // Contact info access
 )
 
 // RelationshipType defines the relationship between agents
 type RelationshipType string
 
 const (
+	// Family relationships
 	RelationshipSpouse  RelationshipType = "spouse"
 	RelationshipPartner RelationshipType = "partner"
 	RelationshipParent  RelationshipType = "parent"
 	RelationshipChild   RelationshipType = "child"
 	RelationshipSibling RelationshipType = "sibling"
 	RelationshipFamily  RelationshipType = "family"
-	RelationshipFriend  RelationshipType = "friend"
+
+	// Social relationships
+	RelationshipFriend      RelationshipType = "friend"
+	RelationshipAcquaintance RelationshipType = "acquaintance"
+
+	// Professional relationships
+	RelationshipColleague  RelationshipType = "colleague"
+	RelationshipBoss       RelationshipType = "boss"
+	RelationshipReport     RelationshipType = "report"      // Direct report
+	RelationshipClient     RelationshipType = "client"
+	RelationshipAssistant  RelationshipType = "assistant"
+	RelationshipMentor     RelationshipType = "mentor"
+	RelationshipMentee     RelationshipType = "mentee"
+
+	// Service provider relationships
+	RelationshipDoctor     RelationshipType = "doctor"
+	RelationshipTherapist  RelationshipType = "therapist"
+	RelationshipTrainer    RelationshipType = "trainer"
+	RelationshipAccountant RelationshipType = "accountant"
+	RelationshipLawyer     RelationshipType = "lawyer"
+	RelationshipCoach      RelationshipType = "coach"
+
+	// Community relationships
+	RelationshipNeighbor   RelationshipType = "neighbor"
+	RelationshipTeammate   RelationshipType = "teammate"
+	RelationshipClubMember RelationshipType = "club_member"
 )
 
 // PermissionLevel defines access levels

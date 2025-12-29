@@ -20,6 +20,7 @@ import (
 	"github.com/quantumlife/quantumlife/internal/discovery"
 	"github.com/quantumlife/quantumlife/internal/identity"
 	"github.com/quantumlife/quantumlife/internal/learning"
+	"github.com/quantumlife/quantumlife/internal/ledger"
 	"github.com/quantumlife/quantumlife/internal/memory"
 	"github.com/quantumlife/quantumlife/internal/mesh"
 	"github.com/quantumlife/quantumlife/internal/notifications"
@@ -74,6 +75,10 @@ type Server struct {
 	// Mesh (A2A networking)
 	meshHub *mesh.Hub
 
+	// Ledger (audit trail)
+	ledgerStore    *ledger.Store
+	ledgerRecorder *ledger.Recorder
+
 	// Spaces (for OAuth)
 	gmailSpace    *gmail.Space
 	calendarSpace *calendar.Space
@@ -100,6 +105,7 @@ type Config struct {
 	NotificationService *notifications.Service
 	MCPAPI              *MCPAPI
 	MeshHub             *mesh.Hub
+	LedgerStore         *ledger.Store
 	GmailSpace          *gmail.Space
 	CalendarSpace       *calendar.Space
 }
@@ -110,6 +116,17 @@ func New(cfg Config) *Server {
 	mcpAPI := cfg.MCPAPI
 	if mcpAPI == nil {
 		mcpAPI = NewMCPAPI()
+	}
+
+	// Create ledger store and recorder
+	var ledgerStore *ledger.Store
+	var ledgerRecorder *ledger.Recorder
+	if cfg.LedgerStore != nil {
+		ledgerStore = cfg.LedgerStore
+		ledgerRecorder = ledger.NewRecorder(ledgerStore)
+	} else if cfg.DB != nil {
+		ledgerStore = ledger.NewStore(cfg.DB.Conn())
+		ledgerRecorder = ledger.NewRecorder(ledgerStore)
 	}
 
 	s := &Server{
@@ -130,6 +147,8 @@ func New(cfg Config) *Server {
 		notificationService: cfg.NotificationService,
 		mcpAPI:              mcpAPI,
 		meshHub:             cfg.MeshHub,
+		ledgerStore:         ledgerStore,
+		ledgerRecorder:      ledgerRecorder,
 		gmailSpace:          cfg.GmailSpace,
 		calendarSpace:       cfg.CalendarSpace,
 		wsHub:               NewWebSocketHub(),
@@ -298,6 +317,12 @@ func (s *Server) setupRouter() {
 		if s.meshHub != nil {
 			meshAPI := NewMeshAPI(s.meshHub)
 			meshAPI.RegisterRoutes(r)
+		}
+
+		// Ledger API (read-only audit trail)
+		if s.ledgerStore != nil {
+			ledgerAPI := NewLedgerAPI(s.ledgerStore)
+			ledgerAPI.RegisterRoutes(r)
 		}
 	})
 

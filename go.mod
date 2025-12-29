@@ -8,6 +8,7 @@ require (
 	github.com/go-chi/cors v1.2.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/qdrant/go-client v1.16.2
 	github.com/spf13/cobra v1.8.0
 	golang.org/x/crypto v0.46.0

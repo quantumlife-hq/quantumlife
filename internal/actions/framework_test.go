@@ -500,7 +500,7 @@ func TestFramework_RejectAction(t *testing.T) {
 	}
 	fw.queue.Add(action)
 
-	err := fw.RejectAction("test-1")
+	err := fw.RejectAction("test-1", "User declined")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -514,7 +514,7 @@ func TestFramework_RejectAction(t *testing.T) {
 func TestFramework_RejectAction_NotFound(t *testing.T) {
 	fw := NewFramework(DefaultConfig())
 
-	err := fw.RejectAction("nonexistent")
+	err := fw.RejectAction("nonexistent", "User declined")
 	if err == nil {
 		t.Error("expected error for missing action")
 	}
@@ -529,7 +529,7 @@ func TestFramework_RejectAction_NotPending(t *testing.T) {
 	}
 	fw.queue.Add(action)
 
-	err := fw.RejectAction("test-1")
+	err := fw.RejectAction("test-1", "User declined")
 	if err == nil {
 		t.Error("expected error for non-pending action")
 	}

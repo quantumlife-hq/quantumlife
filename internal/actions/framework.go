@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/quantumlife/quantumlife/internal/core"
+	"github.com/quantumlife/quantumlife/internal/ledger"
 	"github.com/quantumlife/quantumlife/internal/triage"
 )
 
@@ -50,6 +51,9 @@ type Framework struct {
 	onSuggest    func(Action) error
 	onApproval   func(Action) (bool, error)
 	onExecute    func(Action, *Result) error
+
+	// Audit ledger (optional)
+	ledgerRecorder *ledger.Recorder
 }
 
 // Config configures the action framework
@@ -161,6 +165,39 @@ func (f *Framework) SetExecuteCallback(cb func(Action, *Result) error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.onExecute = cb
+}
+
+// SetLedgerRecorder sets the ledger recorder for audit trail
+func (f *Framework) SetLedgerRecorder(recorder *ledger.Recorder) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ledgerRecorder = recorder
+}
+
+// recordToLedger records an action event to the audit ledger
+func (f *Framework) recordToLedger(action, actor, actionID, actionType string, details map[string]interface{}) {
+	f.mu.RLock()
+	recorder := f.ledgerRecorder
+	f.mu.RUnlock()
+
+	if recorder == nil {
+		return
+	}
+
+	switch action {
+	case ledger.ActionExecuted:
+		success, _ := details["success"].(bool)
+		recorder.RecordActionExecuted(actionID, actionType, actor, success, details)
+	case ledger.ActionApproved:
+		recorder.RecordActionApproved(actionID, actionType, actor)
+	case ledger.ActionRejected:
+		reason, _ := details["reason"].(string)
+		recorder.RecordActionRejected(actionID, actionType, actor, reason)
+	case ledger.ActionUndone:
+		recorder.RecordActionExecuted(actionID, actionType, actor, true, map[string]interface{}{
+			"undone": true,
+		})
+	}
 }
 
 // ProcessSuggestedActions processes actions from triage
@@ -320,6 +357,19 @@ func (f *Framework) executeAction(ctx context.Context, action Action) error {
 	action.Result = result
 	f.queue.Update(action)
 
+	// Record to audit ledger
+	f.recordToLedger(ledger.ActionExecuted, ledger.ActorAgent, action.ID, string(action.Type), map[string]interface{}{
+		"success":     result.Success,
+		"message":     result.Message,
+		"error":       result.Error,
+		"duration_ms": result.Duration.Milliseconds(),
+		"mode":        action.Mode.String(),
+		"item_id":     action.ItemID,
+		"hat_id":      action.HatID,
+		"description": action.Description,
+		"confidence":  action.Confidence,
+	})
+
 	// Notify via callback
 	if executeCb != nil {
 		return executeCb(action, result)
@@ -340,11 +390,15 @@ func (f *Framework) ApproveAction(ctx context.Context, actionID string) error {
 	}
 
 	action.Status = StatusApproved
+
+	// Record approval to audit ledger
+	f.recordToLedger(ledger.ActionApproved, ledger.ActorUser, action.ID, string(action.Type), nil)
+
 	return f.executeAction(ctx, action)
 }
 
 // RejectAction rejects a pending action
-func (f *Framework) RejectAction(actionID string) error {
+func (f *Framework) RejectAction(actionID string, reason string) error {
 	action, ok := f.queue.Get(actionID)
 	if !ok {
 		return fmt.Errorf("action not found: %s", actionID)
@@ -356,6 +410,12 @@ func (f *Framework) RejectAction(actionID string) error {
 
 	action.Status = StatusRejected
 	f.queue.Update(action)
+
+	// Record rejection to audit ledger
+	f.recordToLedger(ledger.ActionRejected, ledger.ActorUser, action.ID, string(action.Type), map[string]interface{}{
+		"reason": reason,
+	})
+
 	return nil
 }
 
@@ -388,6 +448,12 @@ func (f *Framework) UndoAction(ctx context.Context, actionID string) error {
 
 	action.Status = StatusUndone
 	f.queue.Update(action)
+
+	// Record undo to audit ledger
+	f.recordToLedger(ledger.ActionUndone, ledger.ActorUser, action.ID, string(action.Type), map[string]interface{}{
+		"original_result": action.Result,
+	})
+
 	return nil
 }
 
