@@ -1,0 +1,17 @@
+{
+  "name": "quantumlife-ui-tests",
+  "version": "1.0.0",
+  "description": "Playwright UI tests for QuantumLife",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.57.0"
+  }
+}

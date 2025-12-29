@@ -307,16 +307,44 @@ func (s *Server) setupRouter() {
 			r.Post("/notifications/{id}/dismiss", notifAPI.handleDismissNotification)
 		}
 
-		// Learning (if service is configured)
+		// Learning (if service is configured, otherwise return empty data)
 		if s.learningService != nil {
 			learningHandlers := NewLearningHandlers(s.learningService, s)
 			learningHandlers.RegisterRoutes(r)
+		} else {
+			// Fallback routes when learning service is not configured
+			r.Route("/learning", func(r chi.Router) {
+				r.Get("/understanding", func(w http.ResponseWriter, req *http.Request) {
+					s.respondJSON(w, http.StatusOK, map[string]interface{}{
+						"confidence": 0, "signals_count": 0, "patterns_count": 0,
+						"sender_profiles": map[string]interface{}{},
+					})
+				})
+				r.Get("/patterns", func(w http.ResponseWriter, req *http.Request) {
+					s.respondJSON(w, http.StatusOK, []interface{}{})
+				})
+				r.Get("/stats", func(w http.ResponseWriter, req *http.Request) {
+					s.respondJSON(w, http.StatusOK, map[string]interface{}{
+						"total_signals": 0, "total_patterns": 0,
+					})
+				})
+			})
 		}
 
-		// Proactive (if service is configured)
+		// Proactive (if service is configured, otherwise return empty data)
 		if s.proactiveService != nil {
 			proactiveHandlers := NewProactiveHandlers(s.proactiveService, s)
 			proactiveHandlers.RegisterRoutes(r)
+		} else {
+			// Fallback routes when proactive service is not configured
+			r.Route("/proactive", func(r chi.Router) {
+				r.Get("/recommendations", func(w http.ResponseWriter, req *http.Request) {
+					s.respondJSON(w, http.StatusOK, []interface{}{})
+				})
+				r.Get("/nudges", func(w http.ResponseWriter, req *http.Request) {
+					s.respondJSON(w, http.StatusOK, []interface{}{})
+				})
+			})
 		}
 
 		// Discovery (if services are configured)

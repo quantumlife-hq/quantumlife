@@ -425,11 +425,11 @@
 
             useEffect(() => {
                 Promise.all([
-                    api('/recommendations').catch(() => ({ recommendations: [] })),
-                    api('/nudges').catch(() => ({ nudges: [] }))
+                    api('/proactive/recommendations').catch(() => []),
+                    api('/proactive/nudges').catch(() => [])
                 ]).then(([recsData, nudgesData]) => {
-                    setRecommendations(recsData.recommendations || []);
-                    setNudges(nudgesData.nudges || []);
+                    setRecommendations(Array.isArray(recsData) ? recsData : []);
+                    setNudges(Array.isArray(nudgesData) ? nudgesData : []);
                     setLoading(false);
                 });
             }, []);
