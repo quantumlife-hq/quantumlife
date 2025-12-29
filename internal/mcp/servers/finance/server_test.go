@@ -4,12 +4,54 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/quantumlife/quantumlife/internal/finance"
 	"github.com/quantumlife/quantumlife/internal/spaces"
 )
+
+// ============================================================================
+// Constructor Tests
+// ============================================================================
+
+func TestNew(t *testing.T) {
+	t.Run("nil space returns server with nil space", func(t *testing.T) {
+		srv := New(nil)
+		if srv == nil {
+			t.Fatal("New(nil) returned nil server")
+		}
+		if srv.space != nil {
+			t.Error("expected nil space")
+		}
+	})
+}
+
+func TestNewWithMockSpace(t *testing.T) {
+	t.Run("creates server with mock space", func(t *testing.T) {
+		mock := &MockFinanceSpace{}
+		srv := NewWithMockSpace(mock)
+		if srv == nil {
+			t.Fatal("NewWithMockSpace returned nil")
+		}
+		if srv.Server == nil {
+			t.Error("Server is nil")
+		}
+		if srv.space == nil {
+			t.Error("space is nil")
+		}
+
+		info := srv.Info()
+		if info.Name != "finance" {
+			t.Errorf("expected name 'finance', got %q", info.Name)
+		}
+		if info.Version != "1.0.0" {
+			t.Errorf("expected version '1.0.0', got %q", info.Version)
+		}
+	})
+}
 
 // MockFinanceSpace implements a mock Finance space for testing.
 type MockFinanceSpace struct {
@@ -1075,5 +1117,714 @@ func TestContainsIgnoreCase(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("containsIgnoreCase(%q, %q) = %v, want %v", tt.s, tt.substr, got, tt.expected)
 		}
+	}
+}
+
+// ============================================================================
+// Resource Handler Tests
+// ============================================================================
+
+func TestFinanceServer_SummaryResource(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(*MockFinanceSpace)
+		wantErr bool
+		check   func(t *testing.T, content string)
+	}{
+		{
+			name: "get summary resource when connected",
+			setup: func(m *MockFinanceSpace) {
+				m.IsConnectedFunc = func() bool { return true }
+			},
+			wantErr: false,
+			check: func(t *testing.T, content string) {
+				if !strings.Contains(content, `"status": "connected"`) {
+					t.Error("expected status connected in content")
+				}
+			},
+		},
+		{
+			name: "get summary resource when not connected",
+			setup: func(m *MockFinanceSpace) {
+				m.IsConnectedFunc = func() bool { return false }
+			},
+			wantErr: false,
+			check: func(t *testing.T, content string) {
+				if !strings.Contains(content, "not_connected") {
+					t.Error("expected not_connected in content")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &MockFinanceSpace{}
+			if tt.setup != nil {
+				tt.setup(mock)
+			}
+
+			srv := NewWithMockSpace(mock)
+			ctx := context.Background()
+
+			result, err := srv.handleSummaryResource(ctx, "finance://summary")
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected result, got nil")
+			}
+			if result.URI != "finance://summary" {
+				t.Errorf("expected URI 'finance://summary', got %q", result.URI)
+			}
+			if result.MimeType != "application/json" {
+				t.Errorf("expected MimeType 'application/json', got %q", result.MimeType)
+			}
+			if tt.check != nil {
+				tt.check(t, result.Text)
+			}
+		})
+	}
+}
+
+func TestFinanceServer_SummaryResource_NilSpace(t *testing.T) {
+	srv := NewWithMockSpace(nil)
+	ctx := context.Background()
+
+	result, err := srv.handleSummaryResource(ctx, "finance://summary")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result, got nil")
+	}
+	if !strings.Contains(result.Text, "not_connected") {
+		t.Error("expected not_connected in content")
+	}
+}
+
+func TestFinanceServer_MonthlyResource(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(*MockFinanceSpace)
+		wantErr bool
+		check   func(t *testing.T, content string)
+	}{
+		{
+			name: "get monthly resource when connected with data",
+			setup: func(m *MockFinanceSpace) {
+				m.IsConnectedFunc = func() bool { return true }
+			},
+			wantErr: false,
+			check: func(t *testing.T, content string) {
+				if strings.Contains(content, "not_connected") {
+					t.Error("unexpected not_connected in content")
+				}
+			},
+		},
+		{
+			name: "get monthly resource when not connected",
+			setup: func(m *MockFinanceSpace) {
+				m.IsConnectedFunc = func() bool { return false }
+			},
+			wantErr: false,
+			check: func(t *testing.T, content string) {
+				if !strings.Contains(content, "not_connected") {
+					t.Error("expected not_connected in content")
+				}
+			},
+		},
+		{
+			name: "get monthly resource with no spending data",
+			setup: func(m *MockFinanceSpace) {
+				m.IsConnectedFunc = func() bool { return true }
+				m.GetSpendingSummaryFunc = func(period string) *finance.SpendingSummary {
+					return nil
+				}
+			},
+			wantErr: false,
+			check: func(t *testing.T, content string) {
+				if !strings.Contains(content, "no_data") {
+					t.Error("expected no_data in content")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &MockFinanceSpace{}
+			if tt.setup != nil {
+				tt.setup(mock)
+			}
+
+			srv := NewWithMockSpace(mock)
+			ctx := context.Background()
+
+			result, err := srv.handleMonthlyResource(ctx, "finance://monthly")
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected result, got nil")
+			}
+			if result.URI != "finance://monthly" {
+				t.Errorf("expected URI 'finance://monthly', got %q", result.URI)
+			}
+			if result.MimeType != "application/json" {
+				t.Errorf("expected MimeType 'application/json', got %q", result.MimeType)
+			}
+			if tt.check != nil {
+				tt.check(t, result.Text)
+			}
+		})
+	}
+}
+
+func TestFinanceServer_MonthlyResource_NilSpace(t *testing.T) {
+	srv := NewWithMockSpace(nil)
+	ctx := context.Background()
+
+	result, err := srv.handleMonthlyResource(ctx, "finance://monthly")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result, got nil")
+	}
+	if !strings.Contains(result.Text, "not_connected") {
+		t.Error("expected not_connected in content")
+	}
+}
+
+func TestFinanceServer_ResourceRegistration(t *testing.T) {
+	mock := &MockFinanceSpace{}
+	srv := NewWithMockSpace(mock)
+
+	resources := srv.Registry().ListResources()
+
+	expectedResources := map[string]string{
+		"finance://summary": "Financial Summary",
+		"finance://monthly": "Monthly Report",
+	}
+
+	for _, r := range resources {
+		if expectedName, ok := expectedResources[r.URI]; ok {
+			if r.Name != expectedName {
+				t.Errorf("resource %q name = %q, want %q", r.URI, r.Name, expectedName)
+			}
+			delete(expectedResources, r.URI)
+		}
+	}
+
+	for uri := range expectedResources {
+		t.Errorf("expected resource %q not registered", uri)
+	}
+}
+
+// ============================================================================
+// Additional Nil Space Handler Tests
+// ============================================================================
+
+func TestFinanceServer_GetConnections_NilSpace(t *testing.T) {
+	srv := NewWithMockSpace(nil)
+	ctx := context.Background()
+
+	result, err := srv.handleGetConnections(ctx, []byte("{}"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for nil space")
+	}
+}
+
+func TestFinanceServer_SetBudget_NilSpace(t *testing.T) {
+	srv := NewWithMockSpace(nil)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"category": "groceries",
+		"amount":   500.00,
+	})
+	result, err := srv.handleSetBudget(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for nil space")
+	}
+}
+
+func TestFinanceServer_GetBudgets_NilSpace(t *testing.T) {
+	srv := NewWithMockSpace(nil)
+	ctx := context.Background()
+
+	result, err := srv.handleGetBudgets(ctx, []byte("{}"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for nil space")
+	}
+}
+
+func TestFinanceServer_CreateLinkToken_NilSpace(t *testing.T) {
+	srv := NewWithMockSpace(nil)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"user_id": "user-123",
+	})
+	result, err := srv.handleCreateLinkToken(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for nil space")
+	}
+}
+
+// ============================================================================
+// Additional Handler Edge Case Tests
+// ============================================================================
+
+func TestFinanceServer_ListTransactions_LimitApplied(t *testing.T) {
+	// Create more transactions than the limit
+	manyTransactions := make([]*finance.CategorizedTransaction, 100)
+	for i := 0; i < 100; i++ {
+		manyTransactions[i] = &finance.CategorizedTransaction{
+			Transaction: finance.Transaction{
+				TransactionID: fmt.Sprintf("tx-%03d", i),
+				AccountID:     "acc-001",
+				Amount:        float64(i * 10),
+				Date:          "2024-01-15",
+				Name:          fmt.Sprintf("Transaction %d", i),
+				MerchantName:  fmt.Sprintf("Merchant %d", i),
+			},
+			QLCategory: finance.CategoryOther,
+		}
+	}
+
+	mock := &MockFinanceSpace{
+		GetTransactionsFunc: func(filter finance.TransactionFilter) []*finance.CategorizedTransaction {
+			return manyTransactions
+		},
+	}
+
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"limit": 10,
+	})
+	result, err := srv.handleListTransactions(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+
+	// Verify the result contains only 10 transactions
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	count, ok := response["count"].(float64)
+	if !ok || int(count) != 10 {
+		t.Errorf("expected count 10, got %v", response["count"])
+	}
+}
+
+func TestFinanceServer_ListTransactions_AccountFilter(t *testing.T) {
+	mock := &MockFinanceSpace{
+		GetTransactionsFunc: func(filter finance.TransactionFilter) []*finance.CategorizedTransaction {
+			if filter.AccountID != "acc-001" {
+				t.Errorf("expected account_id 'acc-001', got %q", filter.AccountID)
+			}
+			return sampleTransactions()
+		},
+	}
+
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"account_id": "acc-001",
+	})
+	result, err := srv.handleListTransactions(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+}
+
+func TestFinanceServer_SearchTransactions_LimitHit(t *testing.T) {
+	// Create many matching transactions
+	manyTransactions := make([]*finance.CategorizedTransaction, 50)
+	for i := 0; i < 50; i++ {
+		manyTransactions[i] = &finance.CategorizedTransaction{
+			Transaction: finance.Transaction{
+				TransactionID: fmt.Sprintf("tx-%03d", i),
+				AccountID:     "acc-001",
+				Amount:        float64(i * 10),
+				Date:          "2024-01-15",
+				Name:          fmt.Sprintf("Netflix Subscription %d", i),
+				MerchantName:  "Netflix",
+			},
+			QLCategory: finance.CategorySubscription,
+		}
+	}
+
+	mock := &MockFinanceSpace{
+		GetTransactionsFunc: func(filter finance.TransactionFilter) []*finance.CategorizedTransaction {
+			return manyTransactions
+		},
+	}
+
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"query": "netflix",
+		"limit": 5,
+	})
+	result, err := srv.handleSearchTransactions(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+
+	// Verify the result contains only 5 matches
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	count, ok := response["count"].(float64)
+	if !ok || int(count) != 5 {
+		t.Errorf("expected count 5, got %v", response["count"])
+	}
+}
+
+func TestFinanceServer_SearchTransactions_MerchantMatch(t *testing.T) {
+	mock := &MockFinanceSpace{
+		GetTransactionsFunc: func(filter finance.TransactionFilter) []*finance.CategorizedTransaction {
+			return []*finance.CategorizedTransaction{
+				{
+					Transaction: finance.Transaction{
+						TransactionID: "tx-001",
+						Name:          "Some purchase",
+						MerchantName:  "Whole Foods Market",
+						Amount:        45.00,
+						Date:          "2024-01-15",
+					},
+					QLCategory: finance.CategoryGroceries,
+				},
+			}
+		},
+	}
+
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"query": "whole foods",
+	})
+	result, err := srv.handleSearchTransactions(ctx, argsJSON)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	count, ok := response["count"].(float64)
+	if !ok || int(count) != 1 {
+		t.Errorf("expected count 1, got %v", response["count"])
+	}
+}
+
+// ============================================================================
+// Helper Function Tests
+// ============================================================================
+
+func TestIndexOfString(t *testing.T) {
+	tests := []struct {
+		s        string
+		substr   string
+		expected int
+	}{
+		{"hello world", "world", 6},
+		{"hello world", "hello", 0},
+		{"hello world", "xyz", -1},
+		{"abcabc", "abc", 0},
+		{"", "test", -1},
+		{"test", "", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s-%s", tt.s, tt.substr), func(t *testing.T) {
+			got := indexOfString(tt.s, tt.substr)
+			if got != tt.expected {
+				t.Errorf("indexOfString(%q, %q) = %d, want %d", tt.s, tt.substr, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestStringToLower_Extended(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", ""},
+		{"a", "a"},
+		{"A", "a"},
+		{"Hello World!", "hello world!"},
+		{"ABC123xyz", "abc123xyz"},
+		{"ALL CAPS", "all caps"},
+		{"already lowercase", "already lowercase"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := stringToLower(tt.input)
+			if got != tt.expected {
+				t.Errorf("stringToLower(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// Benchmark Tests
+// ============================================================================
+
+func BenchmarkStringToLower(b *testing.B) {
+	inputs := []string{
+		"Hello World",
+		"COMPLETELY UPPERCASE STRING",
+		"Mixed Case String With Numbers 123",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, input := range inputs {
+			stringToLower(input)
+		}
+	}
+}
+
+func BenchmarkContainsIgnoreCase(b *testing.B) {
+	pairs := []struct {
+		s      string
+		substr string
+	}{
+		{"Hello World", "world"},
+		{"Netflix Subscription Payment", "netflix"},
+		{"Whole Foods Market Purchase", "foods"},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, p := range pairs {
+			containsIgnoreCase(p.s, p.substr)
+		}
+	}
+}
+
+func BenchmarkIndexOfString(b *testing.B) {
+	s := "This is a long string with some content to search through"
+	substrs := []string{"long", "content", "search", "xyz"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, substr := range substrs {
+			indexOfString(s, substr)
+		}
+	}
+}
+
+func BenchmarkHandleListAccounts(b *testing.B) {
+	mock := &MockFinanceSpace{}
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+	argsJSON := []byte("{}")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		srv.handleListAccounts(ctx, argsJSON)
+	}
+}
+
+func BenchmarkHandleSearchTransactions(b *testing.B) {
+	mock := &MockFinanceSpace{}
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"query": "netflix",
+		"limit": 10,
+	})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		srv.handleSearchTransactions(ctx, argsJSON)
+	}
+}
+
+// ============================================================================
+// Additional Coverage Tests
+// ============================================================================
+
+func TestFinanceServer_GetBalance_WithData(t *testing.T) {
+	mock := &MockFinanceSpace{
+		GetNetWorthFunc: func() (assets, liabilities, netWorth float64) {
+			return 50000.00, 10000.00, 40000.00
+		},
+		GetTotalBalanceFunc: func() float64 {
+			return 45000.00
+		},
+	}
+
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+
+	result, err := srv.handleGetBalance(ctx, []byte("{}"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if response["net_worth"] != 40000.00 {
+		t.Errorf("expected net_worth 40000, got %v", response["net_worth"])
+	}
+}
+
+func TestFinanceServer_GetRecurring_WithData(t *testing.T) {
+	mock := &MockFinanceSpace{
+		GetRecurringTransactionsFunc: func() []*finance.RecurringTransaction {
+			return []*finance.RecurringTransaction{
+				{
+					ID:           "rec-001",
+					MerchantName: "Netflix",
+					Category:     finance.CategorySubscription,
+					Amount:       15.99,
+					Frequency:    "monthly",
+					NextExpected: time.Now().AddDate(0, 1, 0),
+					LastSeen:     time.Now(),
+					IsActive:     true,
+					Transactions: []string{"tx-001", "tx-002", "tx-003"},
+				},
+			}
+		},
+	}
+
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+
+	result, err := srv.handleGetRecurring(ctx, []byte("{}"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if response["count"] != float64(1) {
+		t.Errorf("expected count 1, got %v", response["count"])
+	}
+}
+
+func TestFinanceServer_GetInsights_WithData(t *testing.T) {
+	mock := &MockFinanceSpace{
+		GetInsightsFunc: func() []*finance.Insight {
+			return []*finance.Insight{
+				{
+					ID:          "insight-001",
+					Type:        finance.InsightTypeBudgetAlert,
+					Title:       "Budget Alert",
+					Description: "You've exceeded your dining budget",
+					Severity:    finance.SeverityAlert,
+					Amount:      50.00,
+					Category:    finance.CategoryDining,
+				},
+				{
+					ID:          "insight-002",
+					Type:        finance.InsightTypeAnomaly,
+					Title:       "Unusual Spending",
+					Description: "Higher than usual grocery spending",
+					Severity:    finance.SeverityWarning,
+					Amount:      100.00,
+					Category:    finance.CategoryGroceries,
+				},
+			}
+		},
+	}
+
+	srv := NewWithMockSpace(mock)
+	ctx := context.Background()
+
+	result, err := srv.handleGetInsights(ctx, []byte("{}"))
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if response["count"] != float64(2) {
+		t.Errorf("expected count 2, got %v", response["count"])
 	}
 }
