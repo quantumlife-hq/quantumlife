@@ -28,6 +28,7 @@ import (
 	"github.com/quantumlife/quantumlife/internal/spaces/calendar"
 	"github.com/quantumlife/quantumlife/internal/spaces/gmail"
 	"github.com/quantumlife/quantumlife/internal/storage"
+	"github.com/quantumlife/quantumlife/internal/trust"
 )
 
 //go:embed static/*
@@ -79,6 +80,10 @@ type Server struct {
 	ledgerStore    *ledger.Store
 	ledgerRecorder *ledger.Recorder
 
+	// Trust (Trust Capital Model)
+	trustStore *trust.Store
+	meshTrust  *trust.MeshTrust
+
 	// Spaces (for OAuth)
 	gmailSpace    *gmail.Space
 	calendarSpace *calendar.Space
@@ -106,6 +111,8 @@ type Config struct {
 	MCPAPI              *MCPAPI
 	MeshHub             *mesh.Hub
 	LedgerStore         *ledger.Store
+	TrustStore          *trust.Store
+	MeshTrust           *trust.MeshTrust
 	GmailSpace          *gmail.Space
 	CalendarSpace       *calendar.Space
 }
@@ -129,6 +136,28 @@ func New(cfg Config) *Server {
 		ledgerRecorder = ledger.NewRecorder(ledgerStore)
 	}
 
+	// Create trust store and mesh trust
+	var trustStore *trust.Store
+	var meshTrust *trust.MeshTrust
+	if cfg.TrustStore != nil {
+		trustStore = cfg.TrustStore
+	} else if cfg.DB != nil {
+		trustStore = trust.NewStore(cfg.DB.Conn(), ledgerRecorder, nil)
+		// Initialize trust schema
+		if err := trustStore.InitSchema(); err != nil {
+			fmt.Printf("Warning: failed to initialize trust schema: %v\n", err)
+		}
+	}
+	if cfg.MeshTrust != nil {
+		meshTrust = cfg.MeshTrust
+	} else if cfg.DB != nil {
+		meshTrust = trust.NewMeshTrust(cfg.DB.Conn(), ledgerRecorder)
+		// Initialize mesh trust schema
+		if err := meshTrust.InitSchema(); err != nil {
+			fmt.Printf("Warning: failed to initialize mesh trust schema: %v\n", err)
+		}
+	}
+
 	s := &Server{
 		agent:               cfg.Agent,
 		db:                  cfg.DB,
@@ -149,6 +178,8 @@ func New(cfg Config) *Server {
 		meshHub:             cfg.MeshHub,
 		ledgerStore:         ledgerStore,
 		ledgerRecorder:      ledgerRecorder,
+		trustStore:          trustStore,
+		meshTrust:           meshTrust,
 		gmailSpace:          cfg.GmailSpace,
 		calendarSpace:       cfg.CalendarSpace,
 		wsHub:               NewWebSocketHub(),
@@ -323,6 +354,12 @@ func (s *Server) setupRouter() {
 		if s.ledgerStore != nil {
 			ledgerAPI := NewLedgerAPI(s.ledgerStore)
 			ledgerAPI.RegisterRoutes(r)
+		}
+
+		// Trust API (Trust Capital Model)
+		if s.trustStore != nil {
+			trustAPI := NewTrustAPI(s.trustStore, s.meshTrust)
+			trustAPI.RegisterRoutes(r)
 		}
 	})
 
@@ -738,6 +775,26 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 		}
 		if s.executionEngine != nil {
 			result["execution"] = s.executionEngine.Stats()
+		}
+	}
+
+	// Include trust stats if available
+	if s.trustStore != nil {
+		overallScore, err := s.trustStore.GetOverallScore()
+		if err == nil {
+			allScores, _ := s.trustStore.GetAllScores()
+			domainStats := make(map[string]interface{})
+			for domain, score := range allScores {
+				domainStats[string(domain)] = map[string]interface{}{
+					"value": score.Value,
+					"state": score.State,
+				}
+			}
+			result["trust"] = map[string]interface{}{
+				"overall_score": overallScore,
+				"domain_count":  len(allScores),
+				"domains":       domainStats,
+			}
 		}
 	}
 
