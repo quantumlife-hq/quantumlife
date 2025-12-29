@@ -2092,3 +2092,164 @@ func BenchmarkNewClient(b *testing.B) {
 		NewClient("secret_test_token_12345")
 	}
 }
+
+// ============================================================================
+// HTTP Client Edge Case Tests
+// ============================================================================
+
+func TestClient_Get_InvalidURL(t *testing.T) {
+	client := &Client{
+		token:      "secret_test",
+		httpClient: http.DefaultClient,
+		baseURL:    "://invalid-url", // Invalid URL
+		version:    "2022-06-28",
+	}
+
+	_, err := client.Get(context.Background(), "/pages/test")
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestClient_Post_InvalidURL(t *testing.T) {
+	client := &Client{
+		token:      "secret_test",
+		httpClient: http.DefaultClient,
+		baseURL:    "://invalid-url", // Invalid URL
+		version:    "2022-06-28",
+	}
+
+	_, err := client.Post(context.Background(), "/search", map[string]interface{}{"query": "test"})
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestClient_Patch_InvalidURL(t *testing.T) {
+	client := &Client{
+		token:      "secret_test",
+		httpClient: http.DefaultClient,
+		baseURL:    "://invalid-url", // Invalid URL
+		version:    "2022-06-28",
+	}
+
+	_, err := client.Patch(context.Background(), "/pages/test", map[string]interface{}{"archived": true})
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestClient_DoRequest_APIError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"message": "Page not found", "code": "object_not_found"}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "secret_test",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+		version:    "2022-06-28",
+	}
+
+	_, err := client.Get(context.Background(), "/pages/nonexistent")
+	if err == nil {
+		t.Error("expected error for API error")
+	}
+	if err.Error() != "notion API error: Page not found" {
+		t.Errorf("error = %v, expected 'notion API error: Page not found'", err)
+	}
+}
+
+func TestClient_DoRequest_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify headers
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer secret_test" {
+			t.Errorf("Authorization = %q, want 'Bearer secret_test'", auth)
+		}
+		notionVersion := r.Header.Get("Notion-Version")
+		if notionVersion != "2022-06-28" {
+			t.Errorf("Notion-Version = %q, want '2022-06-28'", notionVersion)
+		}
+		contentType := r.Header.Get("Content-Type")
+		if contentType != "application/json" {
+			t.Errorf("Content-Type = %q, want 'application/json'", contentType)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id": "page-123", "object": "page"}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "secret_test",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+		version:    "2022-06-28",
+	}
+
+	result, err := client.Get(context.Background(), "/pages/page-123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result["id"] != "page-123" {
+		t.Errorf("id = %v, want page-123", result["id"])
+	}
+}
+
+func TestClient_Post_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("Method = %s, want POST", r.Method)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"results": [], "has_more": false}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "secret_test",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+		version:    "2022-06-28",
+	}
+
+	result, err := client.Post(context.Background(), "/search", map[string]interface{}{"query": "test"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result["has_more"] != false {
+		t.Errorf("has_more = %v, want false", result["has_more"])
+	}
+}
+
+func TestClient_Patch_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("Method = %s, want PATCH", r.Method)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id": "page-123", "archived": true}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "secret_test",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+		version:    "2022-06-28",
+	}
+
+	result, err := client.Patch(context.Background(), "/pages/page-123", map[string]interface{}{"archived": true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result["archived"] != true {
+		t.Errorf("archived = %v, want true", result["archived"])
+	}
+}
