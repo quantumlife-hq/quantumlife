@@ -343,3 +343,166 @@ func TestMeshHub_StartStop(t *testing.T) {
 		t.Errorf("stop hub: %v", err)
 	}
 }
+
+// Tests for error cases when mesh is not initialized
+func TestMeshAPI_GetAgentCard_NotInitialized(t *testing.T) {
+	api := NewMeshAPI(nil)
+
+	req := httptest.NewRequest("GET", "/mesh/card", nil)
+	rr := httptest.NewRecorder()
+
+	api.handleGetAgentCard(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+
+	var resp map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+
+	if resp["error"] != "mesh not initialized" {
+		t.Errorf("expected error 'mesh not initialized', got %q", resp["error"])
+	}
+}
+
+func TestMeshAPI_ListPeers_NotInitialized(t *testing.T) {
+	api := NewMeshAPI(nil)
+
+	req := httptest.NewRequest("GET", "/mesh/peers", nil)
+	rr := httptest.NewRecorder()
+
+	api.handleListPeers(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+}
+
+func TestMeshAPI_Connect_NotInitialized(t *testing.T) {
+	api := NewMeshAPI(nil)
+
+	body := bytes.NewBufferString(`{"endpoint": "http://localhost:9000"}`)
+	req := httptest.NewRequest("POST", "/mesh/connect", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	api.handleConnect(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+}
+
+func TestMeshAPI_Connect_InvalidBody(t *testing.T) {
+	hub := createTestHub(t)
+	api := NewMeshAPI(hub)
+
+	body := bytes.NewBufferString(`{invalid json`)
+	req := httptest.NewRequest("POST", "/mesh/connect", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	api.handleConnect(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+
+	var resp map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+
+	if resp["error"] != "invalid request body" {
+		t.Errorf("expected error 'invalid request body', got %q", resp["error"])
+	}
+}
+
+func TestMeshAPI_Disconnect_NotInitialized(t *testing.T) {
+	api := NewMeshAPI(nil)
+
+	r := chi.NewRouter()
+	r.Delete("/mesh/peers/{id}", api.handleDisconnect)
+
+	req := httptest.NewRequest("DELETE", "/mesh/peers/some-id", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+}
+
+func TestMeshAPI_SendMessage_NotInitialized(t *testing.T) {
+	api := NewMeshAPI(nil)
+
+	r := chi.NewRouter()
+	r.Post("/mesh/send/{id}", api.handleSendMessage)
+
+	body := bytes.NewBufferString(`{"type": "data", "payload": {}}`)
+	req := httptest.NewRequest("POST", "/mesh/send/some-id", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+}
+
+func TestMeshAPI_SendMessage_InvalidBody(t *testing.T) {
+	hub := createTestHub(t)
+	api := NewMeshAPI(hub)
+
+	r := chi.NewRouter()
+	r.Post("/mesh/send/{id}", api.handleSendMessage)
+
+	body := bytes.NewBufferString(`{invalid json`)
+	req := httptest.NewRequest("POST", "/mesh/send/some-id", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestMeshAPI_Broadcast_NotInitialized(t *testing.T) {
+	api := NewMeshAPI(nil)
+
+	body := bytes.NewBufferString(`{"type": "data", "payload": {}}`)
+	req := httptest.NewRequest("POST", "/mesh/broadcast", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	api.handleBroadcast(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+}
+
+func TestMeshAPI_Broadcast_InvalidBody(t *testing.T) {
+	hub := createTestHub(t)
+	api := NewMeshAPI(hub)
+
+	body := bytes.NewBufferString(`{invalid json`)
+	req := httptest.NewRequest("POST", "/mesh/broadcast", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	api.handleBroadcast(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+
+	var resp map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+
+	if resp["error"] != "invalid request body" {
+		t.Errorf("expected error 'invalid request body', got %q", resp["error"])
+	}
+}

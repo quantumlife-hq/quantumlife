@@ -348,3 +348,220 @@ func createTestMCPServerWithResource() *server.Server {
 
 	return srv
 }
+
+// Tests for handleReadResource
+func TestMCPAPI_ReadResource_Success(t *testing.T) {
+	api := NewMCPAPI()
+	testServer := createTestMCPServerWithResource()
+	api.RegisterServer("test", testServer)
+
+	r := chi.NewRouter()
+	// Use wildcard pattern to match URIs with special characters
+	r.Get("/mcp/servers/{name}/resources/*", func(w http.ResponseWriter, req *http.Request) {
+		// Extract URI from the wildcard
+		uri := chi.URLParam(req, "*")
+		// Set it as "uri" parameter for the handler
+		rctx := chi.RouteContext(req.Context())
+		rctx.URLParams.Add("uri", uri)
+		api.handleReadResource(w, req)
+	})
+
+	req := httptest.NewRequest("GET", "/mcp/servers/test/resources/test://resource", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestMCPAPI_ReadResource_ServerNotFound(t *testing.T) {
+	api := NewMCPAPI()
+
+	r := chi.NewRouter()
+	r.Get("/mcp/servers/{name}/resources/*", func(w http.ResponseWriter, req *http.Request) {
+		uri := chi.URLParam(req, "*")
+		rctx := chi.RouteContext(req.Context())
+		rctx.URLParams.Add("uri", uri)
+		api.handleReadResource(w, req)
+	})
+
+	req := httptest.NewRequest("GET", "/mcp/servers/nonexistent/resources/test://resource", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+
+	var resp map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+
+	if resp["error"] == "" {
+		t.Error("expected error message")
+	}
+}
+
+func TestMCPAPI_ReadResource_ResourceNotFound(t *testing.T) {
+	api := NewMCPAPI()
+	testServer := createTestMCPServer() // no resource registered
+	api.RegisterServer("test", testServer)
+
+	r := chi.NewRouter()
+	r.Get("/mcp/servers/{name}/resources/*", func(w http.ResponseWriter, req *http.Request) {
+		uri := chi.URLParam(req, "*")
+		rctx := chi.RouteContext(req.Context())
+		rctx.URLParams.Add("uri", uri)
+		api.handleReadResource(w, req)
+	})
+
+	req := httptest.NewRequest("GET", "/mcp/servers/test/resources/nonexistent://resource", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+}
+
+// Tests for GetAllTools
+func TestMCPAPI_GetAllTools_Empty(t *testing.T) {
+	api := NewMCPAPI()
+
+	tools := api.GetAllTools()
+
+	if len(tools) != 0 {
+		t.Errorf("expected 0 tools, got %d", len(tools))
+	}
+}
+
+func TestMCPAPI_GetAllTools_WithServers(t *testing.T) {
+	api := NewMCPAPI()
+	testServer1 := createTestMCPServer()
+	testServer2 := createTestMCPServer()
+	api.RegisterServer("test1", testServer1)
+	api.RegisterServer("test2", testServer2)
+
+	tools := api.GetAllTools()
+
+	// Each test server has 1 tool (test.echo)
+	if len(tools) != 2 {
+		t.Errorf("expected 2 tools, got %d", len(tools))
+	}
+}
+
+// Test GetServer method
+func TestMCPAPI_GetServer(t *testing.T) {
+	api := NewMCPAPI()
+	testServer := createTestMCPServer()
+	api.RegisterServer("test", testServer)
+
+	srv := api.GetServer("test")
+	if srv == nil {
+		t.Error("expected server, got nil")
+	}
+
+	srv = api.GetServer("nonexistent")
+	if srv != nil {
+		t.Error("expected nil for nonexistent server")
+	}
+}
+
+// Test DirectCall with invalid body
+func TestMCPAPI_DirectCall_InvalidBody(t *testing.T) {
+	api := NewMCPAPI()
+
+	body := bytes.NewBufferString(`{invalid json`)
+	req := httptest.NewRequest("POST", "/mcp/call", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	api.handleDirectCall(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+}
+
+// Test DirectCall with missing tool name
+func TestMCPAPI_DirectCall_MissingToolName(t *testing.T) {
+	api := NewMCPAPI()
+
+	body := bytes.NewBufferString(`{"arguments": {}}`)
+	req := httptest.NewRequest("POST", "/mcp/call", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	api.handleDirectCall(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+
+	var resp map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &resp)
+
+	if resp["error"] != "tool name required" {
+		t.Errorf("expected error 'tool name required', got %q", resp["error"])
+	}
+}
+
+// Test CallTool with server not found
+func TestMCPAPI_CallTool_ServerNotFound(t *testing.T) {
+	api := NewMCPAPI()
+
+	r := chi.NewRouter()
+	r.Post("/mcp/servers/{name}/tools/{tool}", api.handleCallTool)
+
+	body := bytes.NewBufferString(`{}`)
+	req := httptest.NewRequest("POST", "/mcp/servers/nonexistent/tools/test", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+}
+
+// Test CallTool with invalid body
+func TestMCPAPI_CallTool_InvalidBody(t *testing.T) {
+	api := NewMCPAPI()
+	testServer := createTestMCPServer()
+	api.RegisterServer("test", testServer)
+
+	r := chi.NewRouter()
+	r.Post("/mcp/servers/{name}/tools/{tool}", api.handleCallTool)
+
+	body := bytes.NewBufferString(`{invalid json`)
+	req := httptest.NewRequest("POST", "/mcp/servers/test/tools/test.echo", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+}
+
+// Test ListResources with server not found
+func TestMCPAPI_ListResources_ServerNotFound(t *testing.T) {
+	api := NewMCPAPI()
+
+	r := chi.NewRouter()
+	r.Get("/mcp/servers/{name}/resources", api.handleListResources)
+
+	req := httptest.NewRequest("GET", "/mcp/servers/nonexistent/resources", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+}

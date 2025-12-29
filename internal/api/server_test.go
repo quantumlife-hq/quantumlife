@@ -1052,3 +1052,197 @@ func TestIsDuplicateError(t *testing.T) {
 		})
 	}
 }
+
+// --- Additional Handler Tests ---
+
+func TestAPI_UpdateHat_NotFound(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	r := chi.NewRouter()
+	r.Put("/api/v1/hats/{hatID}", srv.handleUpdateHat)
+
+	body := bytes.NewBufferString(`{"name": "New Name"}`)
+	req := httptest.NewRequest("PUT", "/api/v1/hats/nonexistent", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+}
+
+func TestAPI_GetHat_Success(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	r := chi.NewRouter()
+	r.Get("/api/v1/hats/{hatID}", srv.handleGetHat)
+
+	// personal hat should exist after migration
+	req := httptest.NewRequest("GET", "/api/v1/hats/personal", nil)
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var hat core.Hat
+	if err := json.Unmarshal(rr.Body.Bytes(), &hat); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if hat.ID != core.HatPersonal {
+		t.Errorf("expected hat ID 'personal', got %q", hat.ID)
+	}
+}
+
+func TestAPI_UpdateItem_NotFound(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	r := chi.NewRouter()
+	r.Put("/api/v1/items/{itemID}", srv.handleUpdateItem)
+
+	body := bytes.NewBufferString(`{"priority": 5}`)
+	req := httptest.NewRequest("PUT", "/api/v1/items/nonexistent-item-id", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rr.Code)
+	}
+}
+
+func TestAPI_CreateMemory_Valid(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	// Skip if agent is not available
+	if srv.agent == nil {
+		t.Skip("CreateMemory requires agent - skipped in unit tests")
+	}
+
+	body := bytes.NewBufferString(`{"content": "test memory", "type": "fact", "hat_id": "personal"}`)
+	req := httptest.NewRequest("POST", "/api/v1/memories", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	srv.handleCreateMemory(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPI_SearchMemories_Valid(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	// Skip if agent is not available
+	if srv.agent == nil {
+		t.Skip("SearchMemories requires agent - skipped in unit tests")
+	}
+
+	body := bytes.NewBufferString(`{"query": "test", "limit": 10}`)
+	req := httptest.NewRequest("POST", "/api/v1/memories/search", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	srv.handleSearchMemories(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestAPI_GetAgentStatus(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	// Skip if agent is not available
+	if srv.agent == nil {
+		t.Skip("GetAgentStatus requires agent - skipped in unit tests")
+	}
+
+	req := httptest.NewRequest("GET", "/api/v1/agent/status", nil)
+	rr := httptest.NewRecorder()
+
+	srv.handleGetAgentStatus(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestAPI_GetStats(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	// Skip if agent is not available
+	if srv.agent == nil {
+		t.Skip("GetStats requires agent - skipped in unit tests")
+	}
+
+	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
+	rr := httptest.NewRecorder()
+
+	srv.handleGetStats(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestAPI_AgentChat_Valid(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	// Skip if agent is not available
+	if srv.agent == nil {
+		t.Skip("AgentChat requires agent - skipped in unit tests")
+	}
+
+	body := bytes.NewBufferString(`{"message": "Hello!"}`)
+	req := httptest.NewRequest("POST", "/api/v1/agent/chat", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	srv.handleAgentChat(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestAPI_CreateItem_Valid(t *testing.T) {
+	srv, db := testServer(t)
+	defer db.Close()
+
+	// Skip if agent is not available
+	if srv.agent == nil {
+		t.Skip("CreateItem requires agent - skipped in unit tests")
+	}
+
+	body := bytes.NewBufferString(`{
+		"type": "email",
+		"from": "test@example.com",
+		"subject": "Test Subject",
+		"body": "Test body content"
+	}`)
+	req := httptest.NewRequest("POST", "/api/v1/items", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	srv.handleCreateItem(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Errorf("expected status 201, got %d", rr.Code)
+	}
+}
