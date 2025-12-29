@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/quantumlife/quantumlife/internal/testutil/mockservers"
@@ -1223,5 +1225,218 @@ func BenchmarkHandleListChannels(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		srv.handleListChannels(ctx, []byte("{}"))
+	}
+}
+
+// ============================================================================
+// HTTP Client Edge Case Tests
+// ============================================================================
+
+func TestClient_Get_InvalidURL(t *testing.T) {
+	client := &Client{
+		token:      "xoxb-test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    "://invalid-url", // Invalid URL
+	}
+
+	_, err := client.Get(context.Background(), "test.method", url.Values{})
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestClient_Post_InvalidURL(t *testing.T) {
+	client := &Client{
+		token:      "xoxb-test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    "://invalid-url", // Invalid URL
+	}
+
+	_, err := client.Post(context.Background(), "test.method", map[string]interface{}{})
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestClient_DoRequest_InvalidJSON(t *testing.T) {
+	// Create a mock server that returns invalid JSON
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("invalid json {"))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "xoxb-test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	_, err := client.Get(context.Background(), "test.method", url.Values{})
+	if err == nil {
+		t.Error("expected error for invalid JSON response")
+	}
+}
+
+func TestClient_DoRequest_APIError(t *testing.T) {
+	// Create a mock server that returns an API error
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok": false, "error": "invalid_auth"}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "xoxb-test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	_, err := client.Get(context.Background(), "test.method", url.Values{})
+	if err == nil {
+		t.Error("expected error for API error response")
+	}
+	if !strings.Contains(err.Error(), "invalid_auth") {
+		t.Errorf("error = %v, expected to contain 'invalid_auth'", err)
+	}
+}
+
+func TestClient_DoRequest_NetworkError(t *testing.T) {
+	client := &Client{
+		token:      "xoxb-test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    "http://localhost:1", // Port 1 should be unreachable
+	}
+
+	_, err := client.Get(context.Background(), "test.method", url.Values{})
+	if err == nil {
+		t.Error("expected network error")
+	}
+}
+
+func TestClient_Get_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify authorization header
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			t.Error("missing Bearer token")
+		}
+
+		// Verify method is GET
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok": true, "data": "test"}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "xoxb-test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	result, err := client.Get(context.Background(), "test.method", url.Values{"param": []string{"value"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result["data"] != "test" {
+		t.Errorf("data = %v, want test", result["data"])
+	}
+}
+
+func TestClient_Post_Success(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify authorization header
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			t.Error("missing Bearer token")
+		}
+
+		// Verify method is POST
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+
+		// Verify content type
+		ct := r.Header.Get("Content-Type")
+		if ct != "application/json" {
+			t.Errorf("Content-Type = %q, want application/json", ct)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok": true, "success": true}`))
+	}))
+	defer ts.Close()
+
+	client := &Client{
+		token:      "xoxb-test-token",
+		httpClient: http.DefaultClient,
+		baseURL:    ts.URL,
+	}
+
+	result, err := client.Post(context.Background(), "test.method", map[string]interface{}{"key": "value"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result["success"] != true {
+		t.Errorf("success = %v, want true", result["success"])
+	}
+}
+
+func TestGetNestedString_DeepNesting(t *testing.T) {
+	input := map[string]interface{}{
+		"level1": map[string]interface{}{
+			"level2": map[string]interface{}{
+				"level3": "deep value",
+			},
+		},
+	}
+
+	// Test 3-level nesting
+	result := getNestedString(input, "level1", "level2", "level3")
+	if result != "deep value" {
+		t.Errorf("got %q, want %q", result, "deep value")
+	}
+
+	// Test intermediate level returns empty (not a string)
+	result = getNestedString(input, "level1", "level2")
+	if result != "" {
+		t.Errorf("intermediate level should return empty string, got %q", result)
+	}
+}
+
+func TestGetNestedString_WrongType(t *testing.T) {
+	input := map[string]interface{}{
+		"number": 42,
+		"nested": map[string]interface{}{
+			"number": 123,
+		},
+	}
+
+	// Non-string value at leaf
+	result := getNestedString(input, "number")
+	if result != "" {
+		t.Errorf("non-string value should return empty, got %q", result)
+	}
+
+	// Non-string value in nested path
+	result = getNestedString(input, "nested", "number")
+	if result != "" {
+		t.Errorf("non-string nested value should return empty, got %q", result)
+	}
+}
+
+func TestGetNestedString_NonMapIntermediate(t *testing.T) {
+	input := map[string]interface{}{
+		"string_value": "not a map",
+	}
+
+	// Try to get nested value from a string (not a map)
+	result := getNestedString(input, "string_value", "nested")
+	if result != "" {
+		t.Errorf("traversing through non-map should return empty, got %q", result)
 	}
 }
