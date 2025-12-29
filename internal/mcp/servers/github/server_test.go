@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -1166,5 +1167,633 @@ func TestGitHubServer_ToolRegistration(t *testing.T) {
 		if !toolMap[expected] {
 			t.Errorf("expected tool %q not found", expected)
 		}
+	}
+}
+
+// ============================================================================
+// Additional Tests for Higher Coverage
+// ============================================================================
+
+func TestNewClient(t *testing.T) {
+	client := NewClient("test-token")
+	if client == nil {
+		t.Fatal("NewClient returned nil")
+	}
+	if client.token != "test-token" {
+		t.Errorf("token = %q, want %q", client.token, "test-token")
+	}
+	if client.baseURL != "https://api.github.com" {
+		t.Errorf("baseURL = %q, want %q", client.baseURL, "https://api.github.com")
+	}
+	if client.httpClient == nil {
+		t.Error("httpClient is nil")
+	}
+}
+
+func TestGitHubServer_SearchRepos_WithMock(t *testing.T) {
+	t.Run("search repos successfully", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"total_count": 2,
+					"items": []interface{}{
+						map[string]interface{}{
+							"name":             "go-awesome",
+							"full_name":        "octocat/go-awesome",
+							"description":      "An awesome Go project",
+							"html_url":         "https://github.com/octocat/go-awesome",
+							"stargazers_count": 5000,
+							"forks_count":      100,
+							"language":         "Go",
+						},
+						map[string]interface{}{
+							"name":             "go-tools",
+							"full_name":        "octocat/go-tools",
+							"description":      "Go development tools",
+							"html_url":         "https://github.com/octocat/go-tools",
+							"stargazers_count": 2000,
+							"forks_count":      50,
+							"language":         "Go",
+						},
+					},
+				}, nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"query": "language:go stars:>1000",
+			"sort":  "stars",
+			"limit": 10,
+		})
+		result, err := srv.handleSearchRepos(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.IsError {
+			t.Errorf("unexpected error result: %s", result.Content[0].Text)
+		}
+	})
+
+	t.Run("search without sort", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"total_count": 0,
+					"items":       []interface{}{},
+				}, nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"query": "test-query",
+		})
+		result, err := srv.handleSearchRepos(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.IsError {
+			t.Errorf("unexpected error result: %s", result.Content[0].Text)
+		}
+	})
+
+	t.Run("search API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("API rate limit exceeded")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"query": "test-query",
+		})
+		result, err := srv.handleSearchRepos(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+}
+
+func TestGitHubServer_AddComment_WithMock(t *testing.T) {
+	t.Run("add comment API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			PostFunc: func(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("permission denied")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner":  "octocat",
+			"repo":   "hello-world",
+			"number": 1,
+			"body":   "Test comment",
+		})
+		result, err := srv.handleAddComment(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+
+	t.Run("add comment missing number", func(t *testing.T) {
+		mock := &MockGitHubAPI{}
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner": "octocat",
+			"repo":  "hello-world",
+			"body":  "Test comment",
+		})
+		result, _ := srv.handleAddComment(ctx, argsJSON)
+		if !result.IsError {
+			t.Error("expected error result for missing number")
+		}
+	})
+}
+
+func TestGitHubServer_GetIssue_WithMock(t *testing.T) {
+	t.Run("get issue with assignees", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"number":     42,
+					"title":      "Bug Report",
+					"body":       "Description",
+					"state":      "open",
+					"html_url":   "https://github.com/octocat/hello-world/issues/42",
+					"user":       map[string]interface{}{"login": "reporter"},
+					"labels":     []interface{}{map[string]interface{}{"name": "bug"}},
+					"assignees":  []interface{}{map[string]interface{}{"login": "dev1"}, map[string]interface{}{"login": "dev2"}},
+					"comments":   5,
+					"created_at": "2024-01-15T10:00:00Z",
+					"updated_at": "2024-01-16T10:00:00Z",
+					"closed_at":  nil,
+				}, nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner":  "octocat",
+			"repo":   "hello-world",
+			"number": 42,
+		})
+		result, err := srv.handleGetIssue(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.IsError {
+			t.Errorf("unexpected error result: %s", result.Content[0].Text)
+		}
+	})
+
+	t.Run("get issue API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("issue not found")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner":  "octocat",
+			"repo":   "hello-world",
+			"number": 999,
+		})
+		result, err := srv.handleGetIssue(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+}
+
+func TestGitHubServer_GetUser_WithMock(t *testing.T) {
+	t.Run("get user API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("user not found")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"username": "nonexistent",
+		})
+		result, err := srv.handleGetUser(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+}
+
+func TestGitHubServer_GetRepo_WithMock(t *testing.T) {
+	t.Run("get repo API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("repo not found")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner": "octocat",
+			"repo":  "nonexistent",
+		})
+		result, err := srv.handleGetRepo(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+}
+
+func TestGitHubServer_ListIssues_WithMock(t *testing.T) {
+	t.Run("list issues with PRs filtered", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return []interface{}{
+					map[string]interface{}{
+						"number":     1,
+						"title":      "Issue 1",
+						"state":      "open",
+						"html_url":   "https://github.com/octocat/hello-world/issues/1",
+						"labels":     []interface{}{},
+						"comments":   2,
+						"created_at": "2024-01-15T10:00:00Z",
+						"updated_at": "2024-01-16T10:00:00Z",
+					},
+					map[string]interface{}{
+						"number":       2,
+						"title":        "PR 1",
+						"state":        "open",
+						"html_url":     "https://github.com/octocat/hello-world/pull/2",
+						"pull_request": map[string]interface{}{"url": "..."},
+						"labels":       []interface{}{},
+						"comments":     1,
+						"created_at":   "2024-01-15T10:00:00Z",
+						"updated_at":   "2024-01-16T10:00:00Z",
+					},
+				}, nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner": "octocat",
+			"repo":  "hello-world",
+		})
+		result, err := srv.handleListIssues(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.IsError {
+			t.Errorf("unexpected error result: %s", result.Content[0].Text)
+		}
+	})
+
+	t.Run("list issues API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return nil, fmt.Errorf("API error")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner": "octocat",
+			"repo":  "hello-world",
+		})
+		result, err := srv.handleListIssues(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+
+	t.Run("list issues unexpected format", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return "not an array", nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner": "octocat",
+			"repo":  "hello-world",
+		})
+		result, err := srv.handleListIssues(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for unexpected format")
+		}
+	})
+}
+
+func TestGitHubServer_ListRepos_WithMock(t *testing.T) {
+	t.Run("list repos API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return nil, fmt.Errorf("API error")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		result, err := srv.handleListRepos(ctx, []byte("{}"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+
+	t.Run("list repos unexpected format", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return "not an array", nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		result, err := srv.handleListRepos(ctx, []byte("{}"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for unexpected format")
+		}
+	})
+}
+
+func TestGitHubServer_ListPRs_WithMock(t *testing.T) {
+	t.Run("list PRs API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return nil, fmt.Errorf("API error")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner": "octocat",
+			"repo":  "hello-world",
+		})
+		result, err := srv.handleListPRs(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+
+	t.Run("list PRs unexpected format", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return "not an array", nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner": "octocat",
+			"repo":  "hello-world",
+		})
+		result, err := srv.handleListPRs(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for unexpected format")
+		}
+	})
+}
+
+func TestGitHubServer_GetPR_WithMock(t *testing.T) {
+	t.Run("get PR API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("PR not found")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner":  "octocat",
+			"repo":   "hello-world",
+			"number": 999,
+		})
+		result, err := srv.handleGetPR(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+}
+
+func TestGitHubServer_GetNotifications_WithMock(t *testing.T) {
+	t.Run("get notifications API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return nil, fmt.Errorf("API error")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		result, err := srv.handleGetNotifications(ctx, []byte("{}"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+
+	t.Run("get notifications unexpected format", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+				return "not an array", nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		result, err := srv.handleGetNotifications(ctx, []byte("{}"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for unexpected format")
+		}
+	})
+}
+
+func TestGitHubServer_CreateIssue_WithMock(t *testing.T) {
+	t.Run("create issue API error", func(t *testing.T) {
+		mock := &MockGitHubAPI{
+			PostFunc: func(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("permission denied")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{
+			"owner": "octocat",
+			"repo":  "hello-world",
+			"title": "Test Issue",
+		})
+		result, err := srv.handleCreateIssue(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for API error")
+		}
+	})
+}
+
+func TestGitHubServer_GetContents_WithMock_APIError(t *testing.T) {
+	mock := &MockGitHubAPI{
+		GetFunc: func(ctx context.Context, path string) (interface{}, error) {
+			return nil, fmt.Errorf("not found")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"owner": "octocat",
+		"repo":  "hello-world",
+		"path":  "nonexistent",
+	})
+	result, err := srv.handleGetContents(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for API error")
+	}
+}
+
+func TestGitHubServer_SearchIssues_WithMock_APIError(t *testing.T) {
+	mock := &MockGitHubAPI{
+		GetMapFunc: func(ctx context.Context, path string) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("rate limited")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"query": "test",
+	})
+	result, err := srv.handleSearchIssues(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for API error")
+	}
+}
+
+// ============================================================================
+// Benchmarks
+// ============================================================================
+
+func BenchmarkExtractLabelNames(b *testing.B) {
+	labels := []interface{}{
+		map[string]interface{}{"name": "bug"},
+		map[string]interface{}{"name": "priority:high"},
+		map[string]interface{}{"name": "help-wanted"},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		extractLabelNames(labels)
+	}
+}
+
+func BenchmarkSplitAndTrim(b *testing.B) {
+	input := "bug, feature, docs, test, enhancement"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		splitAndTrim(input)
+	}
+}
+
+func BenchmarkGetNestedString(b *testing.B) {
+	input := map[string]interface{}{
+		"head": map[string]interface{}{
+			"ref": "feature-branch",
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		getNestedString(input, "head", "ref")
 	}
 }
