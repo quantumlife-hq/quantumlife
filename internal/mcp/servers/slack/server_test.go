@@ -3,6 +3,7 @@ package slack
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -689,4 +690,538 @@ func TestSlackServer_WithMockInterface(t *testing.T) {
 		}
 	})
 
+}
+
+// ============================================================================
+// Additional Tests for Higher Coverage
+// ============================================================================
+
+func TestNewClient(t *testing.T) {
+	client := NewClient("xoxb-test-token")
+	if client == nil {
+		t.Fatal("NewClient returned nil")
+	}
+	if client.token != "xoxb-test-token" {
+		t.Errorf("token = %q, want %q", client.token, "xoxb-test-token")
+	}
+	if client.baseURL != "https://slack.com/api" {
+		t.Errorf("baseURL = %q, want %q", client.baseURL, "https://slack.com/api")
+	}
+	if client.httpClient == nil {
+		t.Error("httpClient is nil")
+	}
+}
+
+func TestNew_WithNilClient(t *testing.T) {
+	srv := New(nil)
+	if srv == nil {
+		t.Fatal("New(nil) returned nil")
+	}
+	if srv.client != nil {
+		t.Error("expected nil client")
+	}
+}
+
+func TestSlackServer_GetMessages_AutoJoin(t *testing.T) {
+	t.Run("auto-join on not_in_channel error", func(t *testing.T) {
+		callCount := 0
+		mock := &MockSlackAPI{
+			GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+				if method == "conversations.history" {
+					callCount++
+					if callCount == 1 {
+						// First call fails with not_in_channel
+						return nil, fmt.Errorf("slack API error: not_in_channel")
+					}
+					// Second call succeeds after join
+					return map[string]interface{}{
+						"ok": true,
+						"messages": []interface{}{
+							map[string]interface{}{
+								"ts":   "1234567890.123456",
+								"user": "U123",
+								"text": "Hello",
+							},
+						},
+					}, nil
+				}
+				return map[string]interface{}{"ok": true}, nil
+			},
+			PostFunc: func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+				if method == "conversations.join" {
+					return map[string]interface{}{"ok": true}, nil
+				}
+				return nil, fmt.Errorf("unexpected method: %s", method)
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{"channel": "C123"})
+		result, err := srv.handleGetMessages(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result.IsError {
+			t.Errorf("unexpected error result: %s", result.Content[0].Text)
+		}
+		if callCount != 2 {
+			t.Errorf("expected 2 history calls (retry after join), got %d", callCount)
+		}
+	})
+
+	t.Run("auto-join fails", func(t *testing.T) {
+		mock := &MockSlackAPI{
+			GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("slack API error: not_in_channel")
+			},
+			PostFunc: func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("join failed")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{"channel": "C123"})
+		result, err := srv.handleGetMessages(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result")
+		}
+	})
+
+	t.Run("other API error (not auto-join)", func(t *testing.T) {
+		mock := &MockSlackAPI{
+			GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("slack API error: channel_not_found")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{"channel": "C123"})
+		result, err := srv.handleGetMessages(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result")
+		}
+	})
+
+	t.Run("no messages", func(t *testing.T) {
+		mock := &MockSlackAPI{
+			GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+				return map[string]interface{}{"ok": true}, nil // no messages key
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		ctx := context.Background()
+
+		argsJSON, _ := json.Marshal(map[string]interface{}{"channel": "C123"})
+		result, err := srv.handleGetMessages(ctx, argsJSON)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Error("expected error result for no messages")
+		}
+	})
+}
+
+func TestSlackServer_ListChannels_NoChannels(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return map[string]interface{}{"ok": true}, nil // no channels key
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	result, err := srv.handleListChannels(ctx, []byte("{}"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for no channels")
+	}
+}
+
+func TestSlackServer_SendMessage_APIError(t *testing.T) {
+	mock := &MockSlackAPI{
+		PostFunc: func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("channel_not_found")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"channel": "C123",
+		"text":    "Hello",
+	})
+	result, err := srv.handleSendMessage(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result")
+	}
+}
+
+func TestSlackServer_AddReaction_APIError(t *testing.T) {
+	mock := &MockSlackAPI{
+		PostFunc: func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("already_reacted")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"channel":   "C123",
+		"timestamp": "1234567890.123456",
+		"emoji":     "thumbsup",
+	})
+	result, err := srv.handleAddReaction(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result")
+	}
+}
+
+func TestSlackServer_Search_APIError(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("search_error")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{"query": "test"})
+	result, err := srv.handleSearch(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result")
+	}
+}
+
+func TestSlackServer_Search_NoResults(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return map[string]interface{}{"ok": true}, nil // no messages key
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{"query": "test"})
+	result, err := srv.handleSearch(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for no results")
+	}
+}
+
+func TestSlackServer_GetUser_APIError(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("user_not_found")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{"user_id": "U123"})
+	result, err := srv.handleGetUser(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result")
+	}
+}
+
+func TestSlackServer_GetUser_NotFound(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return map[string]interface{}{"ok": true}, nil // no user key
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{"user_id": "U123"})
+	result, err := srv.handleGetUser(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for user not found")
+	}
+}
+
+func TestSlackServer_ListUsers_APIError(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("list_error")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	result, err := srv.handleListUsers(ctx, []byte("{}"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result")
+	}
+}
+
+func TestSlackServer_ListUsers_NoMembers(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return map[string]interface{}{"ok": true}, nil // no members key
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	result, err := srv.handleListUsers(ctx, []byte("{}"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result for no members")
+	}
+}
+
+func TestSlackServer_ListUsers_FilterDeletedAndBots(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"ok": true,
+				"members": []interface{}{
+					map[string]interface{}{
+						"id":        "U001",
+						"name":      "active_user",
+						"real_name": "Active User",
+						"deleted":   false,
+						"is_bot":    false,
+						"profile":   map[string]interface{}{"display_name": "Active", "email": "active@test.com"},
+					},
+					map[string]interface{}{
+						"id":        "U002",
+						"name":      "deleted_user",
+						"real_name": "Deleted User",
+						"deleted":   true,
+						"is_bot":    false,
+						"profile":   map[string]interface{}{},
+					},
+					map[string]interface{}{
+						"id":        "U003",
+						"name":      "bot_user",
+						"real_name": "Bot User",
+						"deleted":   false,
+						"is_bot":    true,
+						"profile":   map[string]interface{}{},
+					},
+				},
+			}, nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	result, err := srv.handleListUsers(ctx, []byte("{}"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+	// Should only include the active user, not deleted or bot
+}
+
+func TestSlackServer_GetPermalink_APIError(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("message_not_found")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{
+		"channel":   "C123",
+		"timestamp": "1234567890.123456",
+	})
+	result, err := srv.handleGetPermalink(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result")
+	}
+}
+
+func TestSlackServer_JoinChannel_APIError(t *testing.T) {
+	mock := &MockSlackAPI{
+		PostFunc: func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("channel_not_found")
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{"channel": "C123"})
+	result, err := srv.handleJoinChannel(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error result")
+	}
+}
+
+func TestSlackServer_JoinChannel_Helper(t *testing.T) {
+	t.Run("join success", func(t *testing.T) {
+		mock := &MockSlackAPI{
+			PostFunc: func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+				return map[string]interface{}{"ok": true}, nil
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		err := srv.joinChannel(context.Background(), "C123")
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("join failure", func(t *testing.T) {
+		mock := &MockSlackAPI{
+			PostFunc: func(ctx context.Context, method string, data map[string]interface{}) (map[string]interface{}, error) {
+				return nil, fmt.Errorf("cannot_join")
+			},
+		}
+
+		srv := NewWithMockClient(mock)
+		err := srv.joinChannel(context.Background(), "C123")
+		if err == nil {
+			t.Error("expected error")
+		}
+	})
+}
+
+func TestSlackServer_Search_WithMatches(t *testing.T) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"ok": true,
+				"messages": map[string]interface{}{
+					"total": 2,
+					"matches": []interface{}{
+						map[string]interface{}{
+							"text":      "First match",
+							"user":      "U001",
+							"ts":        "1234567890.123456",
+							"permalink": "https://slack.com/archives/...",
+							"channel":   map[string]interface{}{"name": "general"},
+						},
+						map[string]interface{}{
+							"text":      "Second match",
+							"user":      "U002",
+							"ts":        "1234567890.123457",
+							"permalink": "https://slack.com/archives/...",
+							"channel":   map[string]interface{}{"name": "random"},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	argsJSON, _ := json.Marshal(map[string]interface{}{"query": "test"})
+	result, err := srv.handleSearch(ctx, argsJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("unexpected error result: %s", result.Content[0].Text)
+	}
+}
+
+// ============================================================================
+// Benchmarks
+// ============================================================================
+
+func BenchmarkGetNestedString(b *testing.B) {
+	input := map[string]interface{}{
+		"topic": map[string]interface{}{
+			"value": "General discussion",
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		getNestedString(input, "topic", "value")
+	}
+}
+
+func BenchmarkHandleListChannels(b *testing.B) {
+	mock := &MockSlackAPI{
+		GetFunc: func(ctx context.Context, method string, params url.Values) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"ok": true,
+				"channels": []interface{}{
+					map[string]interface{}{
+						"id":          "C001",
+						"name":        "general",
+						"is_private":  false,
+						"num_members": 50,
+						"topic":       map[string]interface{}{"value": "General"},
+						"purpose":     map[string]interface{}{"value": "Purpose"},
+					},
+				},
+			}, nil
+		},
+	}
+
+	srv := NewWithMockClient(mock)
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		srv.handleListChannels(ctx, []byte("{}"))
+	}
 }
