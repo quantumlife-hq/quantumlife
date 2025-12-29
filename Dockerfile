@@ -1,4 +1,19 @@
-# Build stage
+# Frontend build stage
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/web/app
+
+# Copy package files
+COPY web/app/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source and build
+COPY web/app/ ./
+RUN npm run build
+
+# Go build stage
 FROM golang:1.23-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates gcc musl-dev
@@ -33,6 +48,9 @@ COPY --from=builder /ql /app/ql
 COPY internal/api/static /app/static
 COPY web/landing /app/web/landing
 COPY migrations /app/migrations
+
+# Copy Vite build from frontend stage
+COPY --from=frontend-builder /app/web/app/dist /app/web/app/dist
 
 # Create data directory
 RUN mkdir -p /data

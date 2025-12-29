@@ -1,4 +1,30 @@
 services:
+  # Nango - OAuth/Token lifecycle for 500+ APIs (self-hosted)
+  # Auth infrastructure (Nango) is separate from authorization/agency (QuantumLife)
+  nango:
+    image: nangohq/nango:latest
+    ports:
+      - "3003:3003"  # Nango server
+    volumes:
+      - nango-data:/data
+    environment:
+      - NANGO_DB_URL=sqlite:/data/nango.db
+      - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://localhost:3003}
+      - NANGO_CALLBACK_URL=${NANGO_CALLBACK_URL:-http://localhost:3003/oauth/callback}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-quantumlife-nango-secret-key-change-in-prod}
+      - NANGO_PUBLIC_KEY=${NANGO_PUBLIC_KEY:-quantumlife-nango-public-key-change-in-prod}
+      # Encryption for stored tokens
+      - NANGO_ENCRYPTION_KEY=${NANGO_ENCRYPTION_KEY:-32-char-encryption-key-changeme!}
+    restart: unless-stopped
+    networks:
+      - quantumlife-net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
   # Backend - Go API server (includes embedded UI)
   backend:
     build: .
@@ -45,11 +71,17 @@ services:
       # Agent Settings
       - AUTONOMOUS_THRESHOLD=${AUTONOMOUS_THRESHOLD:-0.9}
       - SUPERVISED_THRESHOLD=${SUPERVISED_THRESHOLD:-0.7}
+
+      # Nango Integration (OAuth/token lifecycle for 500+ APIs)
+      - NANGO_HOST=${NANGO_HOST:-http://nango:3003}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-quantumlife-nango-secret-key-change-in-prod}
     depends_on:
       qdrant:
         condition: service_started
       ollama:
         condition: service_started
+      nango:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - quantumlife-net
@@ -99,3 +131,4 @@ volumes:
   quantumlife-data:
   qdrant-data:
   ollama-data:
+  nango-data:

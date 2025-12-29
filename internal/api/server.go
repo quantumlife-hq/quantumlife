@@ -25,6 +25,7 @@ import (
 	"github.com/quantumlife/quantumlife/internal/mesh"
 	"github.com/quantumlife/quantumlife/internal/notifications"
 	"github.com/quantumlife/quantumlife/internal/proactive"
+	"github.com/quantumlife/quantumlife/internal/nango"
 	"github.com/quantumlife/quantumlife/internal/spaces/calendar"
 	"github.com/quantumlife/quantumlife/internal/spaces/gmail"
 	"github.com/quantumlife/quantumlife/internal/storage"
@@ -87,6 +88,11 @@ type Server struct {
 	// Spaces (for OAuth)
 	gmailSpace    *gmail.Space
 	calendarSpace *calendar.Space
+
+	// Nango client (OAuth/token lifecycle for 500+ APIs)
+	// ARCHITECTURAL PRINCIPLE: Auth infrastructure (Nango) is separate from
+	// authorization/agency (QuantumLife). OAuth/token possession ≠ permission-to-act.
+	nangoClient *nango.Client
 
 	// State
 	identity *core.You
@@ -158,6 +164,9 @@ func New(cfg Config) *Server {
 		}
 	}
 
+	// Initialize Nango client for OAuth/token lifecycle
+	nangoClient := nango.NewClient()
+
 	s := &Server{
 		agent:               cfg.Agent,
 		db:                  cfg.DB,
@@ -182,6 +191,7 @@ func New(cfg Config) *Server {
 		meshTrust:           meshTrust,
 		gmailSpace:          cfg.GmailSpace,
 		calendarSpace:       cfg.CalendarSpace,
+		nangoClient:         nangoClient,
 		wsHub:               NewWebSocketHub(),
 	}
 
@@ -389,54 +399,72 @@ func (s *Server) setupRouter() {
 			trustAPI := NewTrustAPI(s.trustStore, s.meshTrust)
 			trustAPI.RegisterRoutes(r)
 		}
+
+		// Connections API (Nango-based OAuth for 500+ services)
+		// ARCHITECTURAL PRINCIPLE: Auth infrastructure (Nango) is separate from
+		// authorization/agency (QuantumLife). OAuth/token possession ≠ permission-to-act.
+		connectionsAPI := NewConnectionsAPI(s.nangoClient, s.spaceStore, s)
+		connectionsAPI.RegisterRoutes(r)
 	})
 
 	// WebSocket
 	r.Get("/ws", s.handleWebSocket)
 
-	// Static files (Web UI)
+	// Static files - Vite build from web/app/dist
+	// During development, run `npm run dev` in web/app for hot reload
+	viteDistDir := "web/app/dist"
+
+	// Serve Vite assets (JS, CSS, images, etc.)
+	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(viteDistDir+"/assets"))))
+
+	// Landing page static files
+	r.Handle("/landing/*", http.StripPrefix("/landing/", http.FileServer(http.Dir("web/landing"))))
+
+	// Legacy embedded static files (for backwards compatibility)
 	staticFS, err := fs.Sub(staticFiles, "static")
-	if err != nil {
-		panic(fmt.Sprintf("failed to get static files: %v", err))
+	if err == nil {
+		fileServer := http.FileServer(http.FS(staticFS))
+		r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
 	}
 
-	// Serve root - landing page or app based on identity
+	// SPA fallback handler - serves index.html for client-side routing
+	serveViteApp := func(w http.ResponseWriter, req *http.Request) {
+		indexPath := viteDistDir + "/index.html"
+		http.ServeFile(w, req, indexPath)
+	}
+
+	// Serve landing page for unauthenticated users at root
 	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 		// Check if user has an identity
 		hasIdentity := s.identity != nil
 
 		if hasIdentity {
-			// Serve the app
-			data, err := fs.ReadFile(staticFS, "index.html")
-			if err != nil {
-				http.Error(w, "Not found", http.StatusNotFound)
-				return
-			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Write(data)
+			// Serve the Vite app
+			serveViteApp(w, req)
 		} else {
 			// Serve the landing page
 			http.ServeFile(w, req, "web/landing/index.html")
 		}
 	})
 
-	// App route - always serves the app UI
-	r.Get("/app", func(w http.ResponseWriter, req *http.Request) {
-		data, err := fs.ReadFile(staticFS, "index.html")
-		if err != nil {
-			http.Error(w, "Not found", http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(data)
-	})
+	// App route - always serves the Vite app
+	r.Get("/app", serveViteApp)
+	r.Get("/app/*", serveViteApp)
 
-	// Landing page static files
-	r.Handle("/landing/*", http.StripPrefix("/landing/", http.FileServer(http.Dir("web/landing"))))
-
-	// Serve other static files
-	fileServer := http.FileServer(http.FS(staticFS))
-	r.Handle("/static/*", http.StripPrefix("/static/", fileServer))
+	// SPA routes - serve index.html for client-side routing
+	spaRoutes := []string{
+		"/onboarding",
+		"/connections",
+		"/connections/*",
+		"/learning",
+		"/proactive",
+		"/trust",
+		"/ledger",
+		"/settings",
+	}
+	for _, route := range spaRoutes {
+		r.Get(route, serveViteApp)
+	}
 
 	s.router = r
 }

@@ -10,6 +10,16 @@ import (
 	"github.com/quantumlife/quantumlife/internal/core"
 )
 
+// AuthSource indicates where credentials are managed
+type AuthSource string
+
+const (
+	// AuthSourceCustom means credentials are in QuantumLife's credential store
+	AuthSourceCustom AuthSource = "custom"
+	// AuthSourceNango means credentials are managed by Nango
+	AuthSourceNango AuthSource = "nango"
+)
+
 // SpaceRecord represents a space in the database
 type SpaceRecord struct {
 	ID           core.SpaceID
@@ -24,6 +34,12 @@ type SpaceRecord struct {
 	Settings     map[string]interface{}
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+
+	// Auth source: 'custom' (QuantumLife credential store) or 'nango' (Nango API)
+	// ARCHITECTURAL PRINCIPLE: Auth infrastructure (Nango) is separate from
+	// authorization/agency (QuantumLife). OAuth/token possession ≠ permission-to-act.
+	AuthSource        AuthSource
+	NangoConnectionID string // For auth_source='nango', the Nango connection ID
 }
 
 // SpaceStore manages space persistence
@@ -43,11 +59,18 @@ func (s *SpaceStore) Create(record *SpaceRecord) error {
 		return fmt.Errorf("marshal settings: %w", err)
 	}
 
+	// Default to custom auth source if not specified
+	authSource := record.AuthSource
+	if authSource == "" {
+		authSource = AuthSourceCustom
+	}
+
 	_, err = s.db.conn.Exec(`
 		INSERT INTO spaces (
 			id, type, provider, name, is_connected, sync_status,
-			sync_cursor, default_hat_id, settings, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			sync_cursor, default_hat_id, settings, auth_source,
+			nango_connection_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		record.ID,
 		record.Type,
@@ -58,6 +81,8 @@ func (s *SpaceStore) Create(record *SpaceRecord) error {
 		record.SyncCursor,
 		record.DefaultHatID,
 		string(settings),
+		authSource,
+		record.NangoConnectionID,
 		time.Now().UTC(),
 		time.Now().UTC(),
 	)
@@ -74,7 +99,7 @@ func (s *SpaceStore) Get(id core.SpaceID) (*SpaceRecord, error) {
 	row := s.db.conn.QueryRow(`
 		SELECT id, type, provider, name, is_connected, last_sync_at,
 		       sync_status, sync_cursor, default_hat_id, settings,
-		       created_at, updated_at
+		       auth_source, nango_connection_id, created_at, updated_at
 		FROM spaces WHERE id = ?
 	`, id)
 
@@ -86,7 +111,7 @@ func (s *SpaceStore) GetByProvider(provider string) ([]*SpaceRecord, error) {
 	rows, err := s.db.conn.Query(`
 		SELECT id, type, provider, name, is_connected, last_sync_at,
 		       sync_status, sync_cursor, default_hat_id, settings,
-		       created_at, updated_at
+		       auth_source, nango_connection_id, created_at, updated_at
 		FROM spaces WHERE provider = ?
 		ORDER BY created_at DESC
 	`, provider)
@@ -103,7 +128,7 @@ func (s *SpaceStore) GetAll() ([]*SpaceRecord, error) {
 	rows, err := s.db.conn.Query(`
 		SELECT id, type, provider, name, is_connected, last_sync_at,
 		       sync_status, sync_cursor, default_hat_id, settings,
-		       created_at, updated_at
+		       auth_source, nango_connection_id, created_at, updated_at
 		FROM spaces
 		ORDER BY created_at DESC
 	`)
@@ -131,6 +156,8 @@ func (s *SpaceStore) Update(record *SpaceRecord) error {
 			sync_cursor = ?,
 			default_hat_id = ?,
 			settings = ?,
+			auth_source = ?,
+			nango_connection_id = ?,
 			updated_at = ?
 		WHERE id = ?
 	`,
@@ -141,6 +168,8 @@ func (s *SpaceStore) Update(record *SpaceRecord) error {
 		record.SyncCursor,
 		record.DefaultHatID,
 		string(settings),
+		record.AuthSource,
+		record.NangoConnectionID,
 		time.Now().UTC(),
 		record.ID,
 	)
@@ -210,6 +239,8 @@ func (s *SpaceStore) scanSpace(row *sql.Row) (*SpaceRecord, error) {
 	var record SpaceRecord
 	var lastSyncAt sql.NullTime
 	var settingsJSON string
+	var authSource sql.NullString
+	var nangoConnID sql.NullString
 
 	err := row.Scan(
 		&record.ID,
@@ -222,6 +253,8 @@ func (s *SpaceStore) scanSpace(row *sql.Row) (*SpaceRecord, error) {
 		&record.SyncCursor,
 		&record.DefaultHatID,
 		&settingsJSON,
+		&authSource,
+		&nangoConnID,
 		&record.CreatedAt,
 		&record.UpdatedAt,
 	)
@@ -243,6 +276,17 @@ func (s *SpaceStore) scanSpace(row *sql.Row) (*SpaceRecord, error) {
 		}
 	}
 
+	// Default to custom if not set
+	if authSource.Valid && authSource.String != "" {
+		record.AuthSource = AuthSource(authSource.String)
+	} else {
+		record.AuthSource = AuthSourceCustom
+	}
+
+	if nangoConnID.Valid {
+		record.NangoConnectionID = nangoConnID.String
+	}
+
 	return &record, nil
 }
 
@@ -254,6 +298,8 @@ func (s *SpaceStore) scanSpaces(rows *sql.Rows) ([]*SpaceRecord, error) {
 		var record SpaceRecord
 		var lastSyncAt sql.NullTime
 		var settingsJSON string
+		var authSource sql.NullString
+		var nangoConnID sql.NullString
 
 		err := rows.Scan(
 			&record.ID,
@@ -266,6 +312,8 @@ func (s *SpaceStore) scanSpaces(rows *sql.Rows) ([]*SpaceRecord, error) {
 			&record.SyncCursor,
 			&record.DefaultHatID,
 			&settingsJSON,
+			&authSource,
+			&nangoConnID,
 			&record.CreatedAt,
 			&record.UpdatedAt,
 		)
@@ -281,6 +329,17 @@ func (s *SpaceStore) scanSpaces(rows *sql.Rows) ([]*SpaceRecord, error) {
 			if err := json.Unmarshal([]byte(settingsJSON), &record.Settings); err != nil {
 				record.Settings = make(map[string]interface{})
 			}
+		}
+
+		// Default to custom if not set
+		if authSource.Valid && authSource.String != "" {
+			record.AuthSource = AuthSource(authSource.String)
+		} else {
+			record.AuthSource = AuthSourceCustom
+		}
+
+		if nangoConnID.Valid {
+			record.NangoConnectionID = nangoConnID.String
 		}
 
 		records = append(records, &record)
