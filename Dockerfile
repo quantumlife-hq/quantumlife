@@ -29,8 +29,9 @@ WORKDIR /app
 COPY --from=builder /quantumlife /app/quantumlife
 COPY --from=builder /ql /app/ql
 
-# Copy static files and migrations
+# Copy static files, landing page, and migrations
 COPY internal/api/static /app/static
+COPY web/landing /app/web/landing
 COPY migrations /app/migrations
 
 # Create data directory
