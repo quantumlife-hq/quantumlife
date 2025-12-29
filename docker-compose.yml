@@ -1,20 +1,61 @@
 services:
-  # Nango - OAuth/Token lifecycle for 500+ APIs (self-hosted)
-  # Auth infrastructure (Nango) is separate from authorization/agency (QuantumLife)
+  # =============================================================================
+  # Nango - OAuth/Token lifecycle management for 500+ APIs (self-hosted)
+  # Architecture: Auth infrastructure (Nango) is SEPARATE from authorization/agency
+  # OAuth/token possession ≠ permission-to-act (QuantumLife controls agency)
+  # =============================================================================
+
+  # PostgreSQL for Nango (required for self-hosted)
+  nango-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: nango
+      POSTGRES_USER: nango
+      POSTGRES_PASSWORD: ${NANGO_DB_PASSWORD:-nango-db-password-change-in-prod}
+    volumes:
+      - nango-postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - quantumlife-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nango -d nango"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Nango Server - OAuth orchestration
   nango:
     image: nangohq/nango-server:latest
     ports:
-      - "3003:3003"  # Nango server
-    volumes:
-      - nango-data:/data
+      - "3003:3003"
     environment:
-      - NANGO_DB_URL=sqlite:/data/nango.db
+      # Database (PostgreSQL)
+      - NANGO_DB_HOST=nango-db
+      - NANGO_DB_PORT=5432
+      - NANGO_DB_NAME=nango
+      - NANGO_DB_USER=nango
+      - NANGO_DB_PASSWORD=${NANGO_DB_PASSWORD:-nango-db-password-change-in-prod}
+
+      # Server URLs
       - NANGO_SERVER_URL=${NANGO_SERVER_URL:-http://localhost:3003}
       - NANGO_CALLBACK_URL=${NANGO_CALLBACK_URL:-http://localhost:3003/oauth/callback}
-      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-quantumlife-nango-secret-key-change-in-prod}
-      - NANGO_PUBLIC_KEY=${NANGO_PUBLIC_KEY:-quantumlife-nango-public-key-change-in-prod}
+
+      # Redirect to QuantumLife after OAuth completes
+      - DEFAULT_CALLBACK_URL=http://localhost:8080/api/v1/connections/callback
+
+      # Security keys (must be UUID v4 format)
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-18fe6195-7d7f-4754-a6c7-64239b15d51c}
+      - NANGO_PUBLIC_KEY=${NANGO_PUBLIC_KEY:-066400fb-5554-4d86-bc16-d7330d09dccc}
+
       # Encryption for stored tokens (base64-encoded 256-bit key)
       - NANGO_ENCRYPTION_KEY=${NANGO_ENCRYPTION_KEY:-VFMN2iK0MAArZlbai3qnpKuVTaGDYGnGdstdG/wgXCc=}
+
+      # Logging
+      - LOG_LEVEL=${NANGO_LOG_LEVEL:-info}
+    depends_on:
+      nango-db:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - quantumlife-net
@@ -23,7 +64,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 30s
 
   # Backend - Go API server (includes embedded UI)
   backend:
@@ -33,6 +74,8 @@ services:
       - "8090:8090"
     volumes:
       - quantumlife-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Access host services from container
     environment:
       # Database
       - DATABASE_PATH=/data/quantumlife.db
@@ -42,8 +85,8 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6334
 
-      # Local AI (Ollama)
-      - OLLAMA_HOST=http://ollama:11434
+      # Local AI (Ollama) - uses host Ollama for GPU support & pre-downloaded models
+      - OLLAMA_HOST=http://host.docker.internal:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
       - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-nomic-embed-text}
 
@@ -74,14 +117,14 @@ services:
 
       # Nango Integration (OAuth/token lifecycle for 500+ APIs)
       - NANGO_HOST=${NANGO_HOST:-http://nango:3003}
-      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-quantumlife-nango-secret-key-change-in-prod}
+      - NANGO_SECRET_KEY=${NANGO_SECRET_KEY:-07f2fcaf-e80d-45bc-8fbd-497a9f2c6191}
+      - NANGO_PUBLIC_KEY=${NANGO_PUBLIC_KEY:-7d773024-2610-4de4-a91e-be57e34123fa}
     depends_on:
       qdrant:
         condition: service_started
-      ollama:
-        condition: service_started
       nango:
         condition: service_healthy
+      # Note: Ollama runs on host (not in container) for GPU support
     restart: unless-stopped
     networks:
       - quantumlife-net
@@ -105,23 +148,26 @@ services:
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    restart: unless-stopped
-    networks:
-      - quantumlife-net
-    # Uncomment for GPU support (NVIDIA)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+  # Ollama - COMMENTED OUT: Using host Ollama for GPU support & pre-downloaded models
+  # The backend connects to host via host.docker.internal:11434
+  # Uncomment to run Ollama in container instead:
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   restart: unless-stopped
+  #   networks:
+  #     - quantumlife-net
+  #   # For GPU support (NVIDIA):
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: all
+  #   #           capabilities: [gpu]
 
 networks:
   quantumlife-net:
@@ -131,4 +177,4 @@ volumes:
   quantumlife-data:
   qdrant-data:
   ollama-data:
-  nango-data:
+  nango-postgres-data:

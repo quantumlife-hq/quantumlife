@@ -20,9 +20,12 @@ import (
 
 // Client is a Nango API client
 type Client struct {
-	baseURL    string
-	secretKey  string
-	httpClient *http.Client
+	baseURL     string // Internal URL for API calls (e.g., http://nango:3003)
+	publicURL   string // External URL for browser redirects (e.g., http://localhost:3003)
+	secretKey   string
+	publicKey   string // Public key for OAuth URLs (required by Nango)
+	callbackURL string // QuantumLife callback URL after OAuth completes
+	httpClient  *http.Client
 }
 
 // NewClient creates a new Nango client
@@ -32,14 +35,32 @@ func NewClient() *Client {
 		baseURL = "http://localhost:3003"
 	}
 
+	// Public URL for browser redirects (defaults to localhost if not set)
+	publicURL := os.Getenv("NANGO_PUBLIC_URL")
+	if publicURL == "" {
+		publicURL = "http://localhost:3003"
+	}
+
 	secretKey := os.Getenv("NANGO_SECRET_KEY")
 	if secretKey == "" {
 		secretKey = "quantumlife-nango-secret-key-change-in-prod"
 	}
 
+	// Public key for OAuth URLs (fetched from environment or Nango API)
+	publicKey := os.Getenv("NANGO_PUBLIC_KEY")
+
+	// QuantumLife callback URL after Nango OAuth completes
+	callbackURL := os.Getenv("QUANTUMLIFE_CALLBACK_URL")
+	if callbackURL == "" {
+		callbackURL = "http://localhost:8080/api/v1/connections/callback"
+	}
+
 	return &Client{
-		baseURL:   baseURL,
-		secretKey: secretKey,
+		baseURL:     baseURL,
+		publicURL:   publicURL,
+		secretKey:   secretKey,
+		publicKey:   publicKey,
+		callbackURL: callbackURL,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -200,9 +221,13 @@ func (c *Client) CreateConnectSession(ctx context.Context, opts ConnectOptions) 
 
 // GetAuthURL returns a direct OAuth URL for a provider
 // Use this for custom OAuth flows instead of Nango's Connect UI
+// Returns the public URL for browser redirects (not internal Docker URL)
 func (c *Client) GetAuthURL(ctx context.Context, integrationID, connectionID string, params map[string]string) (string, error) {
-	// Build query string
-	url := fmt.Sprintf("%s/oauth/connect/%s?connection_id=%s", c.baseURL, integrationID, connectionID)
+	// Build query string using public URL (browser-accessible)
+	// Include public_key which is required by Nango's OAuth endpoint
+	// Include redirect_uri for Nango to redirect back to QuantumLife after OAuth
+	url := fmt.Sprintf("%s/oauth/connect/%s?connection_id=%s&public_key=%s&redirect_uri=%s",
+		c.publicURL, integrationID, connectionID, c.publicKey, c.callbackURL)
 	for k, v := range params {
 		url += "&" + k + "=" + v
 	}

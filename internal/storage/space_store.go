@@ -153,6 +153,12 @@ func (s *SpaceStore) Update(record *SpaceRecord) error {
 		return fmt.Errorf("marshal settings: %w", err)
 	}
 
+	// Handle NULL for optional foreign key (empty string -> NULL)
+	var defaultHatID interface{}
+	if record.DefaultHatID != "" {
+		defaultHatID = record.DefaultHatID
+	}
+
 	_, err = s.db.conn.Exec(`
 		UPDATE spaces SET
 			name = ?,
@@ -172,7 +178,7 @@ func (s *SpaceStore) Update(record *SpaceRecord) error {
 		record.LastSyncAt,
 		record.SyncStatus,
 		record.SyncCursor,
-		record.DefaultHatID,
+		defaultHatID, // NULL if empty
 		string(settings),
 		record.AuthSource,
 		record.NangoConnectionID,
@@ -245,6 +251,7 @@ func (s *SpaceStore) scanSpace(row *sql.Row) (*SpaceRecord, error) {
 	var record SpaceRecord
 	var lastSyncAt sql.NullTime
 	var settingsJSON string
+	var defaultHatID sql.NullString
 	var authSource sql.NullString
 	var nangoConnID sql.NullString
 
@@ -257,7 +264,7 @@ func (s *SpaceStore) scanSpace(row *sql.Row) (*SpaceRecord, error) {
 		&lastSyncAt,
 		&record.SyncStatus,
 		&record.SyncCursor,
-		&record.DefaultHatID,
+		&defaultHatID,
 		&settingsJSON,
 		&authSource,
 		&nangoConnID,
@@ -274,6 +281,10 @@ func (s *SpaceStore) scanSpace(row *sql.Row) (*SpaceRecord, error) {
 
 	if lastSyncAt.Valid {
 		record.LastSyncAt = &lastSyncAt.Time
+	}
+
+	if defaultHatID.Valid {
+		record.DefaultHatID = core.HatID(defaultHatID.String)
 	}
 
 	if settingsJSON != "" {
@@ -304,6 +315,7 @@ func (s *SpaceStore) scanSpaces(rows *sql.Rows) ([]*SpaceRecord, error) {
 		var record SpaceRecord
 		var lastSyncAt sql.NullTime
 		var settingsJSON string
+		var defaultHatID sql.NullString
 		var authSource sql.NullString
 		var nangoConnID sql.NullString
 
@@ -316,7 +328,7 @@ func (s *SpaceStore) scanSpaces(rows *sql.Rows) ([]*SpaceRecord, error) {
 			&lastSyncAt,
 			&record.SyncStatus,
 			&record.SyncCursor,
-			&record.DefaultHatID,
+			&defaultHatID,
 			&settingsJSON,
 			&authSource,
 			&nangoConnID,
@@ -329,6 +341,10 @@ func (s *SpaceStore) scanSpaces(rows *sql.Rows) ([]*SpaceRecord, error) {
 
 		if lastSyncAt.Valid {
 			record.LastSyncAt = &lastSyncAt.Time
+		}
+
+		if defaultHatID.Valid {
+			record.DefaultHatID = core.HatID(defaultHatID.String)
 		}
 
 		if settingsJSON != "" {

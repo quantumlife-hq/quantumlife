@@ -236,46 +236,25 @@ func (api *ConnectionsAPI) handleInitiateConnect(w http.ResponseWriter, r *http.
 	}
 
 	// Check if Nango is available
-	if api.nango != nil && api.nango.IsHealthy() {
-		// Create Nango connect session
-		session, err := api.nango.CreateConnectSession(r.Context(), nango.ConnectOptions{
-			IntegrationID: req.Provider,
-			ConnectionID:  spaceID,
-			Metadata: map[string]interface{}{
-				"space_id":     spaceID,
-				"display_name": space.Name,
-			},
-		})
-
-		if err != nil {
-			// Nango failed, return error but keep space for retry
-			api.respondError(w, http.StatusServiceUnavailable, "OAuth service unavailable: "+err.Error())
-			return
-		}
-
-		api.respondJSON(w, http.StatusOK, map[string]interface{}{
-			"space_id":       spaceID,
-			"provider":       req.Provider,
-			"auth_url":       session.URL,
-			"session_token":  session.Token,
-			"expires_at":     session.ExpiresAt,
-			"message":        "Redirect user to auth_url to complete OAuth",
-		})
-	} else {
-		// Nango not available, return URL for direct OAuth (custom flow)
-		authURL, err := api.nango.GetAuthURL(r.Context(), req.Provider, spaceID, nil)
-		if err != nil {
-			api.respondError(w, http.StatusServiceUnavailable, "OAuth not available")
-			return
-		}
-
-		api.respondJSON(w, http.StatusOK, map[string]interface{}{
-			"space_id":  spaceID,
-			"provider":  req.Provider,
-			"auth_url":  authURL,
-			"message":   "Redirect user to auth_url to complete OAuth",
-		})
+	if api.nango == nil {
+		api.respondError(w, http.StatusServiceUnavailable, "OAuth service not configured")
+		return
 	}
+
+	// Use direct OAuth URL (works with all Nango versions including self-hosted)
+	// The Connect Sessions API is only available in newer Nango cloud versions
+	authURL, err := api.nango.GetAuthURL(r.Context(), req.Provider, spaceID, nil)
+	if err != nil {
+		api.respondError(w, http.StatusServiceUnavailable, "OAuth not available: "+err.Error())
+		return
+	}
+
+	api.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"space_id":  spaceID,
+		"provider":  req.Provider,
+		"auth_url":  authURL,
+		"message":   "Redirect user to auth_url to complete OAuth",
+	})
 }
 
 // handleNangoCallback handles OAuth callback from Nango
