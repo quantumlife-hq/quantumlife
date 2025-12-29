@@ -187,13 +187,13 @@ func (c *Client) CreateEvent(ctx context.Context, req CreateEventRequest) (*Even
 			Date: req.End.Format("2006-01-02"),
 		}
 	} else {
+		// Use RFC3339 format which includes timezone offset
+		// Don't set TimeZone field when using RFC3339 - Google will parse it from the datetime string
 		event.Start = &calendar.EventDateTime{
 			DateTime: req.Start.Format(time.RFC3339),
-			TimeZone: req.Start.Location().String(),
 		}
 		event.End = &calendar.EventDateTime{
 			DateTime: req.End.Format(time.RFC3339),
-			TimeZone: req.End.Location().String(),
 		}
 	}
 

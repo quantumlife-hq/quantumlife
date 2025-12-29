@@ -28,3 +28,4 @@ data/
 # Database files
 *.db
 *.db-journal
+client_secret*.json
