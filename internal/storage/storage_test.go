@@ -1004,3 +1004,478 @@ func TestIdentityStore_UpdateIdentity(t *testing.T) {
 		t.Errorf("Name = %v, want Updated Name", loaded.Name)
 	}
 }
+
+// =============================================================================
+// CredentialStore Tests
+// =============================================================================
+
+// testIdentityManager creates an identity manager with unlocked keys for testing
+func testIdentityManager(t *testing.T, db *DB) *identity.Manager {
+	t.Helper()
+
+	identityStore := NewIdentityStore(db)
+	mgr := identity.NewManager(identityStore)
+
+	// Create and unlock a test identity
+	passphrase := "test-passphrase-12345"
+	_, err := mgr.CreateIdentity("Test User", passphrase)
+	if err != nil {
+		t.Fatalf("create test identity: %v", err)
+	}
+
+	// Load identity and unlock manager's internal keys
+	you, serialized, err := identityStore.LoadIdentity()
+	if err != nil {
+		t.Fatalf("load identity: %v", err)
+	}
+
+	if err := mgr.Unlock(you, serialized, passphrase); err != nil {
+		t.Fatalf("unlock identity: %v", err)
+	}
+
+	return mgr
+}
+
+func TestCredentialStore_NewCredentialStore(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+
+	store := NewCredentialStore(db, mgr)
+	if store == nil {
+		t.Error("NewCredentialStore() should not return nil")
+	}
+	if store.db != db {
+		t.Error("db not set correctly")
+	}
+	if store.identity != mgr {
+		t.Error("identity not set correctly")
+	}
+}
+
+func TestCredentialStore_StoreAndGet(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+
+	// First create a space for the credential
+	spaceStore := NewSpaceStore(db)
+	spaceStore.Create(&SpaceRecord{
+		ID:           "test-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Test Space",
+		DefaultHatID: core.HatProfessional,
+	})
+
+	spaceID := core.SpaceID("test-space")
+	testData := []byte(`{"access_token":"secret123","refresh_token":"refresh456"}`)
+	expiresAt := time.Now().Add(24 * time.Hour)
+
+	// Store credentials
+	if err := store.Store(spaceID, "oauth2", testData, &expiresAt); err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+
+	// Retrieve credentials
+	retrieved, err := store.Get(spaceID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+
+	if string(retrieved) != string(testData) {
+		t.Errorf("Get() = %s, want %s", string(retrieved), string(testData))
+	}
+}
+
+func TestCredentialStore_Store_UpdateExisting(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+
+	// Create a space
+	spaceStore := NewSpaceStore(db)
+	spaceStore.Create(&SpaceRecord{
+		ID:           "update-cred-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Update Test",
+		DefaultHatID: core.HatProfessional,
+	})
+
+	spaceID := core.SpaceID("update-cred-space")
+
+	// Store initial credentials
+	initialData := []byte(`{"token":"initial"}`)
+	if err := store.Store(spaceID, "oauth2", initialData, nil); err != nil {
+		t.Fatalf("Store() initial error = %v", err)
+	}
+
+	// Update credentials
+	updatedData := []byte(`{"token":"updated"}`)
+	if err := store.Store(spaceID, "oauth2", updatedData, nil); err != nil {
+		t.Fatalf("Store() update error = %v", err)
+	}
+
+	// Verify update
+	retrieved, err := store.Get(spaceID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+
+	if string(retrieved) != string(updatedData) {
+		t.Errorf("Get() = %s, want %s", string(retrieved), string(updatedData))
+	}
+}
+
+func TestCredentialStore_Get_NotFound(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+
+	// Get non-existent credentials should return nil
+	data, err := store.Get("nonexistent-space")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if data != nil {
+		t.Error("Get() should return nil for non-existent credentials")
+	}
+}
+
+func TestCredentialStore_GetRecord(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+
+	// Create space and credentials
+	spaceStore := NewSpaceStore(db)
+	if err := spaceStore.Create(&SpaceRecord{
+		ID:           "record-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Record Test",
+		DefaultHatID: core.HatProfessional,
+	}); err != nil {
+		t.Fatalf("Create space error = %v", err)
+	}
+
+	spaceID := core.SpaceID("record-space")
+	expiresAt := time.Now().Add(1 * time.Hour).Truncate(time.Second)
+	if err := store.Store(spaceID, "oauth2", []byte("data"), &expiresAt); err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+
+	// Get record
+	record, err := store.GetRecord(spaceID)
+	if err != nil {
+		t.Fatalf("GetRecord() error = %v", err)
+	}
+	if record == nil {
+		t.Fatal("GetRecord() returned nil")
+	}
+
+	if record.SpaceID != spaceID {
+		t.Errorf("SpaceID = %v, want %v", record.SpaceID, spaceID)
+	}
+	if record.TokenType != "oauth2" {
+		t.Errorf("TokenType = %v, want oauth2", record.TokenType)
+	}
+	if record.ExpiresAt == nil {
+		t.Error("ExpiresAt should not be nil")
+	}
+}
+
+func TestCredentialStore_GetRecord_NotFound(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+
+	record, err := store.GetRecord("nonexistent")
+	if err != nil {
+		t.Fatalf("GetRecord() error = %v", err)
+	}
+	if record != nil {
+		t.Error("GetRecord() should return nil for non-existent credentials")
+	}
+}
+
+func TestCredentialStore_Delete(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+
+	// Create space and credentials
+	spaceStore := NewSpaceStore(db)
+	spaceStore.Create(&SpaceRecord{
+		ID:           "delete-cred-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Delete Test",
+		DefaultHatID: core.HatProfessional,
+	})
+
+	spaceID := core.SpaceID("delete-cred-space")
+	store.Store(spaceID, "oauth2", []byte("data"), nil)
+
+	// Delete
+	if err := store.Delete(spaceID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	// Verify deleted
+	exists, _ := store.Exists(spaceID)
+	if exists {
+		t.Error("Credentials should be deleted")
+	}
+}
+
+func TestCredentialStore_Exists(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+
+	// Create space and credentials
+	spaceStore := NewSpaceStore(db)
+	spaceStore.Create(&SpaceRecord{
+		ID:           "exists-cred-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Exists Test",
+		DefaultHatID: core.HatProfessional,
+	})
+
+	spaceID := core.SpaceID("exists-cred-space")
+
+	// Initially doesn't exist
+	exists, err := store.Exists(spaceID)
+	if err != nil {
+		t.Fatalf("Exists() error = %v", err)
+	}
+	if exists {
+		t.Error("Exists() should return false initially")
+	}
+
+	// Store credentials
+	if err := store.Store(spaceID, "oauth2", []byte("data"), nil); err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+
+	// Now exists
+	exists, _ = store.Exists(spaceID)
+	if !exists {
+		t.Error("Exists() should return true after store")
+	}
+}
+
+func TestCredentialStore_UpdateExpiry(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+
+	// Create space and credentials
+	spaceStore := NewSpaceStore(db)
+	if err := spaceStore.Create(&SpaceRecord{
+		ID:           "expiry-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Expiry Test",
+		DefaultHatID: core.HatProfessional,
+	}); err != nil {
+		t.Fatalf("Create space error = %v", err)
+	}
+
+	spaceID := core.SpaceID("expiry-space")
+	if err := store.Store(spaceID, "oauth2", []byte("data"), nil); err != nil {
+		t.Fatalf("Store() error = %v", err)
+	}
+
+	// Update expiry
+	newExpiry := time.Now().Add(48 * time.Hour).Truncate(time.Second)
+	if err := store.UpdateExpiry(spaceID, &newExpiry); err != nil {
+		t.Fatalf("UpdateExpiry() error = %v", err)
+	}
+
+	// Verify
+	record, err := store.GetRecord(spaceID)
+	if err != nil {
+		t.Fatalf("GetRecord() error = %v", err)
+	}
+	if record == nil {
+		t.Fatal("GetRecord() returned nil")
+	}
+	if record.ExpiresAt == nil {
+		t.Fatal("ExpiresAt should be set")
+	}
+	if !record.ExpiresAt.Truncate(time.Second).Equal(newExpiry) {
+		t.Errorf("ExpiresAt = %v, want %v", record.ExpiresAt, newExpiry)
+	}
+}
+
+func TestCredentialStore_GetExpiring(t *testing.T) {
+	db := testDB(t)
+	mgr := testIdentityManager(t, db)
+	store := NewCredentialStore(db, mgr)
+	spaceStore := NewSpaceStore(db)
+
+	// Create spaces with different expiry times
+	for i := 1; i <= 3; i++ {
+		spaceID := core.SpaceID("expiring-space-" + string(rune('0'+i)))
+		if err := spaceStore.Create(&SpaceRecord{
+			ID:           spaceID,
+			Type:         core.SpaceTypeEmail,
+			Provider:     "gmail",
+			Name:         "Expiring Test",
+			DefaultHatID: core.HatProfessional,
+		}); err != nil {
+			t.Fatalf("Create space error = %v", err)
+		}
+
+		var expiresAt *time.Time
+		if i == 1 {
+			// Expires in 30 minutes (should be included)
+			exp := time.Now().Add(30 * time.Minute)
+			expiresAt = &exp
+		} else if i == 2 {
+			// Expires in 2 hours (should be included)
+			exp := time.Now().Add(2 * time.Hour)
+			expiresAt = &exp
+		} else {
+			// Expires in 48 hours (should NOT be included)
+			exp := time.Now().Add(48 * time.Hour)
+			expiresAt = &exp
+		}
+
+		if err := store.Store(spaceID, "oauth2", []byte("data"), expiresAt); err != nil {
+			t.Fatalf("Store() error = %v", err)
+		}
+	}
+
+	// Get credentials expiring within 24 hours
+	expiring, err := store.GetExpiring(24 * time.Hour)
+	if err != nil {
+		t.Fatalf("GetExpiring() error = %v", err)
+	}
+
+	if len(expiring) != 2 {
+		t.Errorf("GetExpiring() returned %d records, want 2", len(expiring))
+	}
+}
+
+// =============================================================================
+// Additional Edge Case Tests
+// =============================================================================
+
+func TestSpaceStore_Create_Duplicate(t *testing.T) {
+	db := testDB(t)
+	store := NewSpaceStore(db)
+
+	record := &SpaceRecord{
+		ID:           "dup-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Original",
+		DefaultHatID: core.HatProfessional,
+	}
+
+	if err := store.Create(record); err != nil {
+		t.Fatalf("First Create() error = %v", err)
+	}
+
+	// Try to create duplicate
+	err := store.Create(record)
+	if err == nil {
+		t.Error("Create() should fail for duplicate ID")
+	}
+}
+
+func TestSpaceStore_Update_NonExistent(t *testing.T) {
+	db := testDB(t)
+	store := NewSpaceStore(db)
+
+	record := &SpaceRecord{
+		ID:           "nonexistent-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Test",
+		DefaultHatID: core.HatProfessional,
+	}
+
+	// Update should still work (SQLite UPDATE doesn't error on 0 rows)
+	err := store.Update(record)
+	if err != nil {
+		t.Errorf("Update() error = %v", err)
+	}
+}
+
+func TestDB_Open_InvalidPath(t *testing.T) {
+	// Try to open in a non-existent directory
+	_, err := Open(Config{Path: "/nonexistent/path/to/db.sqlite"})
+	if err == nil {
+		t.Error("Open() should fail for invalid path")
+	}
+}
+
+func TestItemStore_GetByHat_Empty(t *testing.T) {
+	db := testDB(t)
+	store := NewItemStore(db)
+
+	// Get items for a hat with no items
+	items, err := store.GetByHat("empty-hat", 10)
+	if err != nil {
+		t.Fatalf("GetByHat() error = %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("GetByHat() returned %d items, want 0", len(items))
+	}
+}
+
+func TestItemStore_GetPending_Empty(t *testing.T) {
+	db := testDB(t)
+	store := NewItemStore(db)
+
+	pending, err := store.GetPending(10)
+	if err != nil {
+		t.Fatalf("GetPending() error = %v", err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("GetPending() returned %d items, want 0", len(pending))
+	}
+}
+
+func TestItemStore_GetRecent_Empty(t *testing.T) {
+	db := testDB(t)
+	store := NewItemStore(db)
+
+	recent, err := store.GetRecent(10)
+	if err != nil {
+		t.Fatalf("GetRecent() error = %v", err)
+	}
+	if len(recent) != 0 {
+		t.Errorf("GetRecent() returned %d items, want 0", len(recent))
+	}
+}
+
+func TestSpaceStore_Settings_NilHandling(t *testing.T) {
+	db := testDB(t)
+	store := NewSpaceStore(db)
+
+	// Create with nil settings
+	record := &SpaceRecord{
+		ID:           "nil-settings-space",
+		Type:         core.SpaceTypeEmail,
+		Provider:     "gmail",
+		Name:         "Nil Settings",
+		Settings:     nil,
+		DefaultHatID: core.HatProfessional,
+	}
+
+	if err := store.Create(record); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	retrieved, _ := store.Get("nil-settings-space")
+	// Settings should be nil or empty, not error
+	if retrieved == nil {
+		t.Fatal("Get() returned nil")
+	}
+}
