@@ -99,6 +99,8 @@
                 chevronRight: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>,
                 refresh: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
                 send: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>,
+                trust: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+                ledger: <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>,
             };
             return icons[name] || null;
         }
@@ -112,6 +114,8 @@
                 { id: 'recommendations', label: 'Recommendations', icon: 'recommendations' },
                 { id: 'learning', label: 'Learning', icon: 'learning' },
                 { id: 'chat', label: 'Agent Chat', icon: 'chat' },
+                { id: 'trust', label: 'Trust Capital', icon: 'trust' },
+                { id: 'ledger', label: 'Audit Trail', icon: 'ledger' },
                 { id: 'spaces', label: 'Spaces', icon: 'spaces' },
                 { id: 'settings', label: 'Settings', icon: 'settings' },
             ];
@@ -797,6 +801,330 @@
                             ))}
                         </div>
                     )}
+                </div>
+            );
+        }
+
+        // Trust Capital View
+        function TrustView() {
+            const [trustData, setTrustData] = useState(null);
+            const [overall, setOverall] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                Promise.all([
+                    api('/trust').catch(() => ({ scores: [] })),
+                    api('/trust/overall').catch(() => null)
+                ]).then(([t, o]) => {
+                    setTrustData(t);
+                    setOverall(o);
+                    setLoading(false);
+                });
+            }, []);
+
+            const getStateBadgeColor = (state) => {
+                switch (state) {
+                    case 'verified': return 'bg-green-100 text-green-700';
+                    case 'trusted': return 'bg-blue-100 text-blue-700';
+                    case 'learning': return 'bg-yellow-100 text-yellow-700';
+                    case 'probation': return 'bg-orange-100 text-orange-700';
+                    case 'restricted': return 'bg-red-100 text-red-700';
+                    default: return 'bg-gray-100 text-gray-700';
+                }
+            };
+
+            const getTrustBarColor = (score) => {
+                if (score >= 90) return 'bg-green-500';
+                if (score >= 75) return 'bg-blue-500';
+                if (score >= 50) return 'bg-yellow-500';
+                if (score >= 30) return 'bg-orange-500';
+                return 'bg-red-500';
+            };
+
+            const formatState = (state) => state ? state.charAt(0).toUpperCase() + state.slice(1) : 'Unknown';
+
+            if (loading) {
+                return (
+                    <div className="flex justify-center items-center h-64">
+                        <div className="animate-pulse text-gray-400">Loading trust data...</div>
+                    </div>
+                );
+            }
+
+            const scores = trustData?.scores || [];
+
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Trust Capital</h1>
+                        <p className="text-gray-500 mt-1">Monitor and manage agent trust across domains</p>
+                    </div>
+
+                    {/* Overall Trust */}
+                    {overall && (
+                        <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-semibold">Overall Trust</h2>
+                                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStateBadgeColor(overall.overall_state)}`}>
+                                    {formatState(overall.overall_state)}
+                                </span>
+                            </div>
+
+                            <div className="grid md:grid-cols-3 gap-6">
+                                <div>
+                                    <div className="text-4xl font-bold text-primary-600">{overall.overall_score?.toFixed(1) || '50.0'}</div>
+                                    <div className="text-sm text-gray-500">Trust Score</div>
+                                </div>
+                                <div>
+                                    <div className="text-4xl font-bold">{overall.domain_count || 0}</div>
+                                    <div className="text-sm text-gray-500">Active Domains</div>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-gray-600">{overall.interpretation || 'Learning - Supervised operation, building trust'}</p>
+                                </div>
+                            </div>
+
+                            <div className="mt-4 h-3 rounded-full bg-gray-200">
+                                <div
+                                    className={`h-3 rounded-full transition-all ${getTrustBarColor(overall.overall_score || 50)}`}
+                                    style={{ width: `${overall.overall_score || 50}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Domain Trust Scores */}
+                    <div className="mb-6">
+                        <h2 className="text-xl font-semibold mb-4">Domain Trust Scores</h2>
+                        {scores.length === 0 ? (
+                            <div className="bg-white rounded-xl p-8 shadow-sm text-center">
+                                <Icon name="trust" className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                                <h3 className="text-lg font-medium text-gray-700 mb-2">No trust data yet</h3>
+                                <p className="text-gray-500">Trust scores will appear as the agent performs actions.</p>
+                            </div>
+                        ) : (
+                            <div className="grid md:grid-cols-2 gap-4">
+                                {scores.map((score, i) => (
+                                    <div key={score.domain || i} className="bg-white rounded-xl p-4 shadow-sm hover-lift transition-all">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h3 className="font-medium capitalize">{score.domain}</h3>
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStateBadgeColor(score.state)}`}>
+                                                {formatState(score.state)}
+                                            </span>
+                                        </div>
+                                        <div className="mb-3">
+                                            <div className="flex justify-between text-sm mb-1">
+                                                <span className="text-gray-500">Trust Score</span>
+                                                <span className="font-medium">{score.value?.toFixed(1)}%</span>
+                                            </div>
+                                            <div className="h-2 rounded-full bg-gray-200">
+                                                <div className={`h-2 rounded-full ${getTrustBarColor(score.value)}`} style={{ width: `${score.value}%` }} />
+                                            </div>
+                                        </div>
+                                        {score.factors && (
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                {['accuracy', 'compliance', 'calibration', 'recency', 'reversals'].map(f => (
+                                                    <div key={f}>
+                                                        <div className="flex justify-between mb-0.5">
+                                                            <span className="text-gray-500 capitalize">{f}</span>
+                                                            <span>{score.factors[f]?.toFixed(0)}</span>
+                                                        </div>
+                                                        <div className="h-1 rounded-full bg-gray-200">
+                                                            <div className="h-1 rounded-full bg-primary-400" style={{ width: `${score.factors[f]}%` }} />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                <div className="text-gray-500">{score.action_count || 0} actions</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Trust States Legend */}
+                    <div className="bg-white rounded-xl p-6 shadow-sm">
+                        <h2 className="text-lg font-semibold mb-4">Trust States</h2>
+                        <div className="grid md:grid-cols-5 gap-4">
+                            {[
+                                { state: 'probation', desc: 'New agent, suggestions only' },
+                                { state: 'learning', desc: 'Building trust, supervised mode' },
+                                { state: 'trusted', desc: 'Autonomous with undo window' },
+                                { state: 'verified', desc: 'Full autonomy' },
+                                { state: 'restricted', desc: 'Trust lost, recovery required' }
+                            ].map(({ state, desc }) => (
+                                <div key={state} className="flex items-start gap-2">
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${getStateBadgeColor(state)}`}>
+                                        {formatState(state)}
+                                    </span>
+                                    <span className="text-xs text-gray-500">{desc}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Audit Trail / Ledger View
+        function LedgerView() {
+            const [entries, setEntries] = useState([]);
+            const [summary, setSummary] = useState(null);
+            const [verification, setVerification] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                Promise.all([
+                    api('/ledger?limit=50').catch(() => ({ entries: [] })),
+                    api('/ledger/summary').catch(() => null),
+                    api('/ledger/verify').catch(() => ({ valid: true }))
+                ]).then(([e, s, v]) => {
+                    setEntries(e.entries || []);
+                    setSummary(s);
+                    setVerification(v);
+                    setLoading(false);
+                });
+            }, []);
+
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '—';
+                return new Date(dateStr).toLocaleDateString();
+            };
+
+            const formatDateTime = (dateStr) => {
+                if (!dateStr) return '—';
+                const date = new Date(dateStr);
+                return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            };
+
+            const truncate = (str, len) => {
+                if (!str) return '—';
+                return str.length <= len ? str : str.slice(0, len) + '...';
+            };
+
+            if (loading) {
+                return (
+                    <div className="flex justify-center items-center h-64">
+                        <div className="animate-pulse text-gray-400">Loading audit trail...</div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="p-8 animate-fadeIn">
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Audit Trail</h1>
+                        <p className="text-gray-500 mt-1">Cryptographic hash-chained ledger of all agent actions</p>
+                    </div>
+
+                    {/* Chain Verification Status */}
+                    <div className={`rounded-xl p-4 mb-6 flex items-center gap-4 ${
+                        verification?.valid
+                            ? 'bg-green-50 border border-green-200'
+                            : 'bg-red-50 border border-red-200'
+                    }`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            verification?.valid ? 'bg-green-500' : 'bg-red-500'
+                        }`}>
+                            <Icon name="check" className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <div className="font-medium">
+                                {verification?.valid ? 'Chain Integrity Verified' : 'Chain Integrity Failed'}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                                {verification?.entries_checked || 0} entries verified
+                                {verification?.error && ` - Error: ${verification.error}`}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Summary Stats */}
+                    {summary && (
+                        <div className="grid md:grid-cols-4 gap-4 mb-6">
+                            <div className="bg-white rounded-xl p-4 shadow-sm">
+                                <div className="flex items-center gap-2 text-gray-500 mb-2">
+                                    <Icon name="ledger" className="w-4 h-4" />
+                                    <span className="text-sm">Total Entries</span>
+                                </div>
+                                <div className="text-2xl font-bold">{summary.total_entries || 0}</div>
+                            </div>
+                            <div className="bg-white rounded-xl p-4 shadow-sm">
+                                <div className="text-sm text-gray-500 mb-2">First Entry</div>
+                                <div className="text-lg font-semibold">{formatDate(summary.first_entry)}</div>
+                            </div>
+                            <div className="bg-white rounded-xl p-4 shadow-sm">
+                                <div className="text-sm text-gray-500 mb-2">Last Entry</div>
+                                <div className="text-lg font-semibold">{formatDate(summary.last_entry)}</div>
+                            </div>
+                            <div className="bg-white rounded-xl p-4 shadow-sm">
+                                <div className="text-sm text-gray-500 mb-2">Chain Valid</div>
+                                <div className="text-lg font-semibold">{summary.chain_valid ? 'Yes' : 'No'}</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Actions by Type */}
+                    {summary?.actions_by_type && Object.keys(summary.actions_by_type).length > 0 && (
+                        <div className="bg-white rounded-xl p-6 shadow-sm mb-6">
+                            <h2 className="text-lg font-semibold mb-4">Actions by Type</h2>
+                            <div className="flex flex-wrap gap-2">
+                                {Object.entries(summary.actions_by_type).map(([action, count]) => (
+                                    <div key={action} className="px-3 py-1.5 rounded-lg bg-gray-100 text-sm">
+                                        <span className="font-medium">{action}</span>
+                                        <span className="ml-2 text-gray-500">{count}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Ledger Entries */}
+                    <div>
+                        <h2 className="text-lg font-semibold mb-4">Recent Entries</h2>
+                        {entries.length === 0 ? (
+                            <div className="bg-white rounded-xl p-8 shadow-sm text-center">
+                                <Icon name="ledger" className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                                <h3 className="text-lg font-medium text-gray-700 mb-2">No ledger entries yet</h3>
+                                <p className="text-gray-500">Entries will appear as the agent performs actions.</p>
+                            </div>
+                        ) : (
+                            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-600">#</th>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-600">Timestamp</th>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-600">Action</th>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-600">Actor</th>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-600">Entity</th>
+                                                <th className="px-4 py-3 text-left font-medium text-gray-600">Hash</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {entries.map((entry, i) => (
+                                                <tr key={entry.id || i} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{entry.sequence}</td>
+                                                    <td className="px-4 py-3 text-gray-500">{formatDateTime(entry.timestamp)}</td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="px-2 py-0.5 rounded bg-gray-100 text-xs font-medium">{entry.action}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 capitalize">{entry.actor}</td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="text-gray-500">{entry.entity_type}:</span>{' '}
+                                                        <span className="font-mono text-xs">{truncate(entry.entity_id, 12)}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 font-mono text-xs text-gray-400">{truncate(entry.hash, 16)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             );
         }
@@ -1821,6 +2149,8 @@
                     case 'recommendations': return <Recommendations />;
                     case 'learning': return <LearningView />;
                     case 'chat': return <ChatView />;
+                    case 'trust': return <TrustView />;
+                    case 'ledger': return <LedgerView />;
                     case 'spaces': return <SpacesView />;
                     case 'settings': return <Settings />;
                     default: return <Dashboard stats={stats} items={items} hats={hats} />;

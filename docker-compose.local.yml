@@ -2,22 +2,7 @@
 # Usage: docker compose -f docker-compose.local.yml up
 
 services:
-  # Frontend - React SPA with nginx
-  frontend:
-    build: ./web/app
-    ports:
-      - "3001:80"
-    depends_on:
-      - backend
-    networks:
-      - quantumlife-net
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:80/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Backend - Go API server (uses host Ollama/Qdrant)
+  # Backend - Go API server (includes embedded UI, uses host Ollama/Qdrant)
   backend:
     build: .
     ports:
